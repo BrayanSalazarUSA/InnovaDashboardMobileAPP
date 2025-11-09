@@ -4,7 +4,7 @@ import { ApiService } from "@/app/services/api";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Image, ScrollView, Text, TouchableOpacity, View, ActivityIndicator } from "react-native";
+import { ActivityIndicator, Alert, Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 
 
@@ -25,8 +25,31 @@ export default function ReportDetail() {
   useEffect(() => {
     // Aquí llamarás a tu servicio real:
      ApiService.getReportById(id).then(setReport).finally(() => setLoading(false));
-
   }, [id]);
+
+  const handleDelete = async () => {
+    console.log("Eliminando reporte")
+  Alert.alert(
+    "Confirmar eliminación",
+    "¿Estás seguro de eliminar este reporte?",
+    [
+      { text: "Cancelar", style: "cancel" },
+      {
+        text: "Eliminar",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await ApiService.deleteReport(id, 5);
+            Alert.alert("✅ Eliminado", "Reporte eliminado correctamente.");
+               router.replace("/(drawer)");
+          } catch (error) {
+            Alert.alert("❌ Error", "No se pudo eliminar el reporte.");
+          }
+        },
+      },
+    ]
+  );
+};
 
   if (loading) {
     return (
@@ -63,14 +86,19 @@ export default function ReportDetail() {
 
   {/* Derecha: Botones de acción */}
   <View className="flex-row items-center gap-3">
-    <TouchableOpacity
-      onPress={() => console.log("Editar reporte")}
-      className="p-2 rounded-full bg-[#F5F2E8] active:opacity-80">
-      <MaterialCommunityIcons name="pencil-outline" size={20} color="#C9A13B" />
-    </TouchableOpacity>
+   <TouchableOpacity
+  className="p-2 rounded-full bg-[#F5F2E8] active:opacity-80"
+  onPress={() => router.push(`/new?id=${report.id}`)} // ← aquí navega al formulario con el ID
+>
+  <MaterialCommunityIcons
+    name="pencil-outline"
+    size={20}
+    color="#C9A13B"
+  />
+</TouchableOpacity>
 
     <TouchableOpacity
-      onPress={() => console.log("Eliminar reporte")}
+      onPress={() => handleDelete()}
       className="p-2 rounded-full bg-[#F5F2E8] active:opacity-80">
       <MaterialCommunityIcons name="delete-outline" size={20} color="#E53935" />
     </TouchableOpacity>

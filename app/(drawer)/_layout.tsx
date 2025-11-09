@@ -50,7 +50,6 @@ export default function DrawerLayout() {
           drawerIcon: ({ color, size }) => <Ionicons name="add-circle-outline" color={color} size={size} />,
         }}
       />
-
       {/* Oculta detalles */}
       <Drawer.Screen
         name="report"
@@ -59,5 +58,6 @@ export default function DrawerLayout() {
         }}
       />
     </Drawer>
+    
   );
 }

@@ -1,9 +1,8 @@
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-import React, { useEffect, useState } from "react";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import React, { useRef, useState } from "react";
 import {
-  Image,
-  Platform,
-  ScrollView,
+  Modal,
+  StyleSheet,
   Text,
   TouchableOpacity,
   View,
@@ -11,227 +10,243 @@ import {
 import DropDownPicker from "react-native-dropdown-picker";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
-export default function IncidentLocationsSelector({
-  property,
-  buildings = [],
-  onLocationsChange,
-  initialLocations = [],
-}) {
-  const [incidentLocations, setIncidentLocations] = useState(initialLocations);
+export default function IncidentLocationsSelector({ property, buildings = [] }) {
+  const [incidentLocations, setIncidentLocations] = useState([]);
+  const [selectedCoords, setSelectedCoords] = useState(null);
+  const [modalVisible, setModalVisible] = useState(false);
+
+  const [selectedBuilding, setSelectedBuilding] = useState(null);
+  const [selectedFloor, setSelectedFloor] = useState(null);
+
   const [openBuilding, setOpenBuilding] = useState(false);
   const [openFloor, setOpenFloor] = useState(false);
 
-  const [region, setRegion] = useState({
+  const mapRef = useRef<MapView>(null);
+
+  const region = {
     latitude: property?.latitude || 33.70615,
     longitude: property?.longitude || -84.3744,
     latitudeDelta: 0.0015,
     longitudeDelta: 0.0015,
-  });
+  };
 
-  useEffect(() => {
-    if (property?.latitude && property?.longitude) {
-      setRegion((prev) => ({
-        ...prev,
-        latitude: property.latitude,
-        longitude: property.longitude,
-      }));
-    }
-  }, [property]);
+  const [currentRegion, setCurrentRegion] = useState(region);
 
   const handleMapPress = (e) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
+    setSelectedCoords({ latitude, longitude });
+    setSelectedBuilding(null);
+    setSelectedFloor(null);
+    setModalVisible(true);
+  };
+
+  const confirmLocation = () => {
+    if (!selectedCoords) return;
     const newLoc = {
       id: Date.now(),
-      latitude,
-      longitude,
-      building: null,
-      floor: null,
+      latitude: selectedCoords.latitude,
+      longitude: selectedCoords.longitude,
+      building: selectedBuilding,
+      floor: selectedFloor,
     };
     setIncidentLocations((prev) => [...prev, newLoc]);
+    setModalVisible(false);
   };
 
-  const updateLocation = (id, field, value) => {
-    setIncidentLocations((prev) =>
-      prev.map((loc) => (loc.id === id ? { ...loc, [field]: value } : loc))
-    );
-  };
-
-  const removeLocation = (id) => {
+  const removeLocation = (id) =>
     setIncidentLocations((prev) => prev.filter((l) => l.id !== id));
+
+  const handleCenterMap = () => {
+    mapRef.current?.animateToRegion(region, 800);
   };
 
-  useEffect(() => {
-    onLocationsChange?.(incidentLocations);
-  }, [incidentLocations]);
+  c
 
-  useEffect(() => {}, [initialLocations]);
   return (
-    <View className="mt-5">
-      <Text className="text-xl font-bold text-[#A67C00] mb-1">
-        Ubicaciones del incidente
-      </Text>
-      <Text className="text-sm text-gray-600 mb-4">
-        Toca el mapa para agregar puntos de incidente.
-      </Text>
-
-      {/* 🗺️ Mapa */}
-      <View
-        className="rounded-2xl overflow-hidden mb-5"
-        style={{
-          borderWidth: 1,
-          borderColor: "#E7D9A9",
-          shadowColor: "#000",
-          shadowOpacity: 0.1,
-          shadowRadius: 6,
-          shadowOffset: { width: 0, height: 3 },
-          elevation: 4,
-        }}
-      >
-        {Platform.OS === "web" ? (
-          // 🌐 Vista para web (evita errores)
-          <View
-            style={{
-              width: "100%",
-              height: 300,
-              borderWidth: 1,
-              borderColor: "#E7D9A9",
-              borderRadius: 20,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "#FFF9E6",
-            }}
-          >
-            <Image
-              source={{
-                uri: `https://maps.googleapis.com/maps/api/staticmap?center=${initialRegion.latitude},${initialRegion.longitude}&zoom=18&size=600x300&maptype=satellite`,
-              }}
-              style={{ width: "100%", height: "100%", borderRadius: 20 }}
-              resizeMode="cover"
+    <View>
+      <Text style={styles.title}>Ubicaciones del incidente</Text>
+      <View>
+        <MapView
+          ref={mapRef}
+          style={{ width: "100%", height: 320 }}
+          provider={PROVIDER_GOOGLE}
+          region={currentRegion}
+          //onRegionChangeComplete={handleRegionChangeComplete}
+          onPress={handleMapPress}
+          mapType="hybrid"
+          minZoomLevel={16}
+          maxZoomLevel={20}
+        >
+          {incidentLocations.map((loc) => (
+            <Marker
+              key={loc.id}
+              coordinate={{ latitude: loc.latitude, longitude: loc.longitude }}
+              title="Ubicación"
+              description={
+                loc.building
+                  ? `Edificio: ${
+                      buildings.find((b) => b.id === loc.building)?.name
+                    }${loc.floor ? ` — Piso ${loc.floor}` : ""}`
+                  : "Zona exterior"
+              }
             />
-            <View
-              style={{
-                position: "absolute",
-                backgroundColor: "rgba(0,0,0,0.4)",
-                padding: 8,
-                borderRadius: 10,
-              }}
-            >
-              <Text style={{ color: "white", fontWeight: "bold" }}>
-                El mapa interactivo no está disponible en la versión web
-              </Text>
-            </View>
-          </View>
-        ) : (
-          // 📱 Vista para Android/iOS
-          <View
-            style={{ width: "100%", height: 300 }}
-            //  provider={PROVIDER_GOOGLE}
-            //region={region}
-            //onPress={handleMapPress}
-            // mapType="hybrid" // ← mapa satelital / realista
-          >
-            S
-          </View>
-        )}
+          ))}
+        </MapView>
+
+        {/* Botón flotante para centrar */}
+        <TouchableOpacity
+          onPress={handleCenterMap}
+          style={styles.centerButton}
+        >
+          <Ionicons name="locate" size={24} color="#fff" />
+        </TouchableOpacity>
       </View>
 
-      {/* 📍 Lista de ubicaciones */}
-      <ScrollView className="pb-8">
-        {incidentLocations.length === 0 && (
-          <Text className="text-center text-gray-500 italic mb-3">
-            No hay ubicaciones agregadas todavía.
-          </Text>
-        )}
+      {/* Modal de selección */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View className="flex-1 justify-center bg-black/40 px-5">
+          <View className="bg-[#fffbe6] rounded-3xl border border-[#F2DEA2] p-5 shadow-lg">
+            <Text className="text-[#A67C00] font-bold text-lg mb-4">
+              Selecciona ubicación
+            </Text>
 
-        {incidentLocations.map((loc, idx) => {
-          const building = buildings.find((b) => b.id === loc.building);
-          const floorOptions = Array.from(
-            { length: building?.totalFloors || 0 },
-            (_, i) => ({ label: `Piso ${i + 1}`, value: i + 1 })
-          );
-
-          return (
-            <View
-              key={loc.id}
-              style={{
-                backgroundColor: "#FFF9E6",
-                borderWidth: 1,
-                borderColor: "#E7D9A9",
-                borderRadius: 20,
-                padding: 14,
-                marginBottom: 14,
-                shadowColor: "#000",
-                shadowOpacity: 0.08,
-                shadowRadius: 4,
-                shadowOffset: { width: 0, height: 2 },
-                elevation: 2,
-              }}
-            >
-              <View className="flex-row justify-between items-center mb-2">
-                <Text className="text-[#A67C00] font-semibold">
-                  Punto {idx + 1}:{" "}
-                  <Text className="text-gray-700">
-                    {loc.latitude.toFixed(4)}, {loc.longitude.toFixed(4)}
-                  </Text>
-                </Text>
-                <TouchableOpacity onPress={() => removeLocation(loc.id)}>
-                  <MaterialCommunityIcons
-                    name="trash-can-outline"
-                    size={20}
-                    color="#D9534F"
-                  />
-                </TouchableOpacity>
-              </View>
-
-              <DropDownPicker
-                open={openBuilding}
-                setOpen={setOpenBuilding}
-                value={loc.building}
-                setValue={(cb) =>
-                  updateLocation(loc.id, "building", cb(loc.building))
-                }
-                items={buildings.map((b) => ({
-                  label: b.name,
+            {/* Dropdown edificio */}
+            <DropDownPicker
+              open={openBuilding}
+              setOpen={setOpenBuilding}
+              value={selectedBuilding}
+              setValue={setSelectedBuilding}
+              items={[
+                { label: "Zona exterior 🌳", value: null },
+                ...buildings.map((b) => ({
+                  label: `🏢 ${b.name}`,
                   value: b.id,
-                }))}
-                placeholder="Selecciona edificio"
-                style={{
-                  borderColor: "#E7D9A9",
-                  backgroundColor: "#FFF",
-                  borderRadius: 12,
-                }}
-                dropDownContainerStyle={{
-                  borderColor: "#E7D9A9",
-                  backgroundColor: "#FFFDF2",
-                }}
-              />
+                })),
+              ]}
+              placeholder="Selecciona edificio o zona"
+              style={styles.dropdown}
+              dropDownContainerStyle={styles.dropdownContainer}
+            />
 
-              {loc.building && (
-                <DropDownPicker
-                  open={openFloor}
-                  setOpen={setOpenFloor}
-                  value={loc.floor}
-                  setValue={(cb) =>
-                    updateLocation(loc.id, "floor", cb(loc.floor))
-                  }
-                  items={floorOptions}
-                  placeholder="Selecciona piso"
-                  style={{
-                    marginTop: 10,
-                    borderColor: "#E7D9A9",
-                    backgroundColor: "#FFF",
-                    borderRadius: 12,
-                  }}
-                  dropDownContainerStyle={{
-                    borderColor: "#E7D9A9",
-                    backgroundColor: "#FFFDF2",
-                  }}
-                />
-              )}
+            {/* Dropdown piso */}
+            {selectedBuilding && (
+              <DropDownPicker
+                open={openFloor}
+                setOpen={setOpenFloor}
+                value={selectedFloor}
+                setValue={setSelectedFloor}
+                items={Array.from({ length: 3 }, (_, i) => ({
+                  label: `Piso ${i + 1}`,
+                  value: i + 1,
+                }))}
+                placeholder="Selecciona piso"
+                style={[styles.dropdown, { marginTop: 10 }]}
+                dropDownContainerStyle={styles.dropdownContainer}
+              />
+            )}
+
+            {/* Botones */}
+            <View style={styles.buttons}>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Text style={styles.cancel}>Cancelar</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={confirmLocation}
+                className="ml-3 bg-[#A67C00] px-5 py-2 rounded-xl"
+              >
+                <Text style={styles.confirm}>Confirmar</Text>
+              </TouchableOpacity>
             </View>
-          );
-        })}
-      </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Lista de ubicaciones */}
+      {incidentLocations.map((loc, idx) => (
+        <View key={loc.id} style={styles.card}>
+          <Text style={styles.cardText}>
+            📍 Zona #{idx + 1} —{" "}
+            {loc.building
+              ? `${buildings.find((b) => b.id === loc.building)?.name}${
+                  loc.floor ? ` — Piso ${loc.floor}` : ""
+                }`
+              : "Zona exterior"}
+          </Text>
+          <TouchableOpacity onPress={() => removeLocation(loc.id)}>
+            <MaterialCommunityIcons
+              name="trash-can-outline"
+              size={20}
+              color="#E53E3E"
+            />
+          </TouchableOpacity>
+        </View>
+      ))}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  title: {
+    color: "#A67C00",
+    fontWeight: "bold",
+    fontSize: 18,
+    marginBottom: 10,
+  },
+  dropdown: {
+    borderColor: "#F2DEA2",
+    backgroundColor: "#FFF",
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  dropdownContainer: {
+    borderColor: "#F2DEA2",
+    backgroundColor: "#FFFDF2",
+    borderRadius: 12,
+  },
+  buttons: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 12,
+  },
+  cancel: {
+    color: "#666",
+    fontWeight: "600",
+  },
+  confirm: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+  card: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#FFF9E6",
+    borderWidth: 1,
+    borderColor: "#F2DEA2",
+    borderRadius: 16,
+    padding: 10,
+    marginTop: 10,
+  },
+  cardText: {
+    color: "#333",
+    fontWeight: "500",
+  },
+  centerButton: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    backgroundColor: "#A67C00",
+    borderRadius: 25,
+    padding: 10,
+    shadowColor: "#000",
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+});

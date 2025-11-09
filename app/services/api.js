@@ -1,5 +1,5 @@
-const API_URL = process.env.EXPO_PUBLIC_SERVER_IP || "http://localhost:8080/api";
 import { Buffer } from "buffer";
+const API_URL = process.env.EXPO_PUBLIC_SERVER_IP || "http://localhost:8080/api";
 global.Buffer = Buffer;
 
 async function apiFetch(endpoint, options = {}) {
@@ -39,6 +39,9 @@ async function apiFetch(endpoint, options = {}) {
     throw err;
   }
 }
+ const formattedDate = (date) => `${String(date.getDate()).padStart(2, "0")}/${String(
+      date.getMonth() + 1
+    ).padStart(2, "0")}/${date.getFullYear()}`;
 
 export const ApiService = {
   getProperties: () => apiFetch("properties"),
@@ -46,25 +49,22 @@ export const ApiService = {
   getIncidents: () => apiFetch("cases"),
   getMonitors: () => apiFetch("users/agents"),
   getReportById: (reportId) => apiFetch("pending-reports/"+reportId),
-
   createReport: async (data) => {
   const formData = new FormData();
 
 
-    const now = new Date();
-    const formattedDate = `${String(now.getDate()).padStart(2, "0")}/${String(
-      now.getMonth() + 1
-    ).padStart(2, "0")}/${now.getFullYear()}`;
+    const date = new Date();
+   
 
     console.log(" Fecha del reporte:", formattedDate);
-
 formData.append("pendingReport", {
   uri: `data:application/json;base64,${Buffer.from(JSON.stringify({
     property: data.property,
     contributedBy: data.contributedBy,
     caseType: data.caseType,
-    incidentDate: formattedDate, // 🔹 En formato dd/MM/yyyy
+    incidentDate: formattedDate(date), // 🔹 En formato dd/MM/yyyy
     incidentStartTime: data.incidentStartTime,
+    followings:data.followings,
     incidentEndTime: data.incidentEndTime,
     reportDetails: data.reportDetails,
     incidentLocations: data.incidentLocations,
@@ -88,10 +88,13 @@ formData.append("pendingReport", {
   console.log("📡 Endpoint:", `${API_URL}/pending-reports`);
 
   try {
-    const response = await fetch(`${API_URL}/pending-reports`, {
-      method: "POST",
-      body: formData,
-    });
+ const response = await fetch(`${API_URL}/pending-reports`, {
+  method: "POST",
+  headers: {
+    "Userid": data.contributedBy.id.toString(), // 👈 Usa el mismo id del monitor
+  },
+  body: formData,
+});
 
     const result = await response.json();
     console.log(" Reporte creado:", result);
@@ -100,5 +103,68 @@ formData.append("pendingReport", {
   } catch (error) {
     console.error("🚨 Error completo al enviar:", error);
   }
-}
+},
+updateReport: async (id, data) => {
+    try {
+      console.log(`✏️ Actualizando reporte ID: ${id}`);
+      console.log("📦 Payload:", data);
+
+      const response = await fetch(`${API_URL}/pending-reports/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Userid": data.contributedBy.id.toString(),
+        },
+        body: JSON.stringify({
+          property: data.property,
+          contributedBy: data.contributedBy,
+          caseType: data.caseType,
+          //incidentDate: data.incidentDate,
+          incidentStartTime: data.incidentStartTime,
+          incidentEndTime: data.incidentEndTime,
+          reportDetails: data.reportDetails,
+          evidences: data.evidences || [],
+          followings: data.followings || [],
+          persist: data.persist ?? false,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error("⚠️ Error al actualizar reporte:", result);
+        throw new Error(result?.error || "Error al actualizar reporte");
+      }
+
+      console.log("✅ Reporte actualizado:", result);
+      return result;
+    } catch (error) {
+      console.error("🚨 Error en updateReport:", error.message);
+      throw error;
+    }
+  },
+  deleteReport: async (id, userId) => {
+    try {
+      console.log(` Eliminando reporte ID: ${id}`);
+
+      const response = await fetch(`${API_URL}/pending-reports/${id}`, {
+        method: "DELETE",
+        headers: {
+          "Userid": userId?.toString() || "0",
+        },
+      });
+
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        console.error(" Error al eliminar reporte:", result);
+        throw new Error(result?.error || "Error al eliminar reporte");
+      }
+
+      console.log(" Reporte eliminado correctamente");
+      return { success: true };
+    } catch (error) {
+      console.error(" Error en deleteReport:", error.message);
+      throw error;
+    }
+  },
 };
