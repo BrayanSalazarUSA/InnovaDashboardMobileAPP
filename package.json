@@ -61,12 +61,7 @@
   },
   "expo": {
     "name": "Innova Monitoring",
-    "slug": "innova-monitoring",
-    "splash": {
-      "image": "./assets/logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
-    }
+    "slug": "innova-monitoring"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
