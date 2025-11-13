@@ -78,7 +78,8 @@ export default function HomeScreen() {
     currentPage * itemsPerPage
   );
 
-  const navigateToDetails = (id) => router.push(`/report/${id}`);
+  const navigateToDetails = (id) => router.replace(`/report/${id}`);
+
 
   // 🔹 Cambio de fecha
   const handleDateChange = (event, selectedDate) => {
@@ -92,6 +93,7 @@ export default function HomeScreen() {
       setCurrentPage(1);
     }
   };
+
 
   return (
     <View className="flex-1 bg-[#F9F7F1] p-4">

@@ -12,7 +12,6 @@ export default function DrawerLayout() {
         headerShown: true,
         headerTitleAlign: "left",
         drawerActiveTintColor: "#C9A13B",
-        //drawerInactiveTintColor: "#2666CF",
         drawerLabelStyle: { fontSize: 15, fontWeight: "500" },
         headerStyle: { backgroundColor: dark ? "#1B1B1B" : "#C9A13B" },
         headerTitle: () => (
@@ -47,6 +46,7 @@ export default function DrawerLayout() {
         options={{
           drawerLabel: "Agregar Reporte",
           title: "Agregar Reporte",
+             drawerItemStyle: { display: "none" }, 
           drawerIcon: ({ color, size }) => <Ionicons name="add-circle-outline" color={color} size={size} />,
         }}
       />

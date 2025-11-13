@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import DropDownPicker from "react-native-dropdown-picker";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+//import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 
 export default function IncidentLocationsSelector({ property, buildings = [] }) {
   const [incidentLocations, setIncidentLocations] = useState([]);
@@ -66,7 +66,7 @@ export default function IncidentLocationsSelector({ property, buildings = [] }) 
     <View>
       <Text style={styles.title}>Ubicaciones del incidente</Text>
       <View>
-        <MapView
+      {/*   <MapView
           ref={mapRef}
           style={{ width: "100%", height: 320 }}
           provider={PROVIDER_GOOGLE}
@@ -91,7 +91,7 @@ export default function IncidentLocationsSelector({ property, buildings = [] }) 
               }
             />
           ))}
-        </MapView>
+        </MapView>*/}
 
         {/* Botón flotante para centrar */}
         <TouchableOpacity

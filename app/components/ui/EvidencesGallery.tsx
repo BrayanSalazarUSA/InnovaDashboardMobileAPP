@@ -1,35 +1,60 @@
-import React, { useState } from "react";
-import {
-  View,
-  Image,
-  Modal,
-  TouchableOpacity,
-  Text,
-  Pressable,
-} from "react-native";
+import React, { useEffect, useState } from "react";
+import { Image, Modal, Pressable, Text, TouchableOpacity, View } from "react-native";
 
 export default function EvidencesGallery({ report, BUCKET_URL }: any) {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [evidences, setEvidences] = useState<any[]>([]);
+  const [refreshKey, setRefreshKey] = useState(Date.now()); // 🔑 Fuerza recarga de imágenes
+
+  useEffect(() => {
+    console.log("🟡 Report cambió, actualizando evidencias...");
+    console.log(report);
+
+    if (report?.evidences?.length) {
+      setEvidences(report.evidences);
+      setRefreshKey(Date.now()); // 🔁 Refresca imágenes cada vez que cambia el reporte
+    } else {
+      setEvidences([]);
+    }
+
+    return () => {
+      console.log("🧹 Limpiando evidencias al desmontar o cambiar reporte");
+      setSelectedImage(null);
+      setEvidences([]);
+    };
+  }, [report?.id, report?.evidences?.length]);
+
+  if (!report) return null;
 
   return (
     <View className="mt-3">
       {/* Miniaturas */}
       <View className="flex-row flex-wrap justify-between">
-        {report.evidences?.map((e: any, i: number) => (
-          <TouchableOpacity
-            key={e.id || i}
-            activeOpacity={0.9}
-            className="mb-3"
-            style={{ width: "48%" }}
-            onPress={() => setSelectedImage(BUCKET_URL + e.path)}
-          >
-            <Image
-              source={{ uri: BUCKET_URL + e.path }}
-              className="w-full aspect-square rounded-xl border border-[#EDE8D3]"
-              resizeMode="cover"
-            />
-          </TouchableOpacity>
-        ))}
+        {evidences.length > 0 ? (
+          evidences.map((e, i) => {
+            const imgUri = `${BUCKET_URL}${e.path}?v=${refreshKey}`;
+            return (
+              <TouchableOpacity
+                key={e.id || i}
+                activeOpacity={0.9}
+                className="mb-3"
+                style={{ width: "48%" }}
+                onPress={() => setSelectedImage(imgUri)}
+              >
+                <Image
+                  key={`${imgUri}-${i}`}
+                  source={{ uri: imgUri }}
+                  className="w-full aspect-square rounded-xl border border-[#EDE8D3]"
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
+            );
+          })
+        ) : (
+          <Text className="text-gray-500 text-center w-full mt-2 italic">
+            No hay evidencias registradas.
+          </Text>
+        )}
       </View>
 
       {/* Modal para ver imagen en grande */}
@@ -49,8 +74,9 @@ export default function EvidencesGallery({ report, BUCKET_URL }: any) {
 
           {selectedImage && (
             <Image
+              key={`modal-${selectedImage}`}
               source={{ uri: selectedImage }}
-              className="w-[90%] h-[70%] rounded-2xl border border-[#C9A13B]"
+              className="w-[90%] h-[70%] rounded-xl"
               resizeMode="contain"
             />
           )}

@@ -12,7 +12,7 @@ import {
 } from "react-native";
 
 import Header from "../components/common/Header";
-import CameraFollowings from "../components/ui/CamerasFollowing";
+import CameraFollowingsForm from "../components/ui/CamerasFollowingForm";
 import ImageUploader from "../components/ui/ImageUploader";
 import IncidentLocationsSelector from "../components/ui/IncidentLocationsSelector";
 import IncidentPicker from "../components/ui/IncidentPicker";
@@ -41,9 +41,7 @@ export default function NewReport() {
   const [images, setImages] = useState<string[]>([]);
   const [monitorId, setMonitorId] = useState("");
   const [incidentLocations, setIncidentLocations] = useState<any[]>([]);
-  const [followings, setFollowings] = useState([
-    { camera: "", description: "", time: "" },
-  ]);
+const [followings, setFollowings] = useState([]); // vacío al inicio
   const [isHighPriority, setIsHighPriority] = useState(false);
 
   // Listas base
@@ -51,7 +49,9 @@ export default function NewReport() {
   const [buildings, setBuildings] = useState([]);
   const [monitors, setMonitors] = useState([]);
   const [incidents, setIncidents] = useState([]);
+  const [currentReport, setCurrentReport] = useState<any>(null);
 
+  //  Reiniciar formulario
   const resetForm = () => {
     setPropertyId("");
     setIncidentId("");
@@ -60,25 +60,27 @@ export default function NewReport() {
     setDescription("");
     setImages([]);
     setMonitorId("");
-    setIsHighPriority(false)
+    setIsHighPriority(false);
     setIncidentLocations([]);
-    setFollowings([{ camera: "", description: "", time: "" }]);
+  setFollowings([]);
   };
 
-  // 🔁 Forzar remount del formulario si cambia ID
+  // Forzar remount del formulario si cambia ID
   const [key, setKey] = useState(0);
   useEffect(() => {
     setKey((prev) => prev + 1);
   }, [id]);
 
   const scrollRef = useRef<ScrollView>(null);
+
+  // Mover scroll al inicio cada vez que la pantalla se enfoque
   useFocusEffect(
     useCallback(() => {
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     }, [])
   );
 
-  // 🔹 Cargar datos iniciales (catálogos)
+  // Cargar catálogos base
   useEffect(() => {
     const loadInitialData = async () => {
       try {
@@ -97,7 +99,7 @@ export default function NewReport() {
     loadInitialData();
   }, []);
 
-  // 🔹 Cargar edificios según propiedad
+  // Cargar edificios según propiedad seleccionada
   useEffect(() => {
     if (!propertyId) return setBuildings([]);
     const loadBuildings = async () => {
@@ -112,47 +114,63 @@ export default function NewReport() {
     loadBuildings();
   }, [propertyId]);
 
-  // 🔹 Detectar modo edición y cargar reporte
-  useEffect(() => {
-    const loadReportData = async (reportId: string) => {
-      try {
-        setLoading(true);
-        const report = await ApiService.getReportById(reportId);
-        if (!report) throw new Error("No se pudo obtener el reporte.");
+  // Función para cargar los datos de un reporte
+  const loadReportData = async (reportId: string) => {
+    try {
+      setLoading(true);
+      const report = await ApiService.getReportById(reportId);
+      if (!report) throw new Error("No se pudo obtener el reporte.");
 
-        setPropertyId(report.property?.id || "");
-        setIncidentId(report.caseType?.id || "");
-        setMonitorId(report.contributedBy?.id || "");
-        setStartTime(report.incidentStartTime || "");
-        setEndTime(report.incidentEndTime || "");
-        setDescription(report.reportDetails || "");
-        setImages(report.evidences?.map((e) => `${BUCKET_URL}${e.url}`) || []);
-        setIncidentLocations(report.incidentLocations || []);
-        setFollowings(report.followings || []);
-      } catch (err) {
-        console.error("Error cargando reporte:", err);
-        Alert.alert("Error", "No se pudo cargar el reporte.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (id) {
-      console.log("🟡 Editando reporte:", id);
-
-      setIsEditMode(true);
-      loadReportData(String(id));
-    } else {
-      console.log("🟢 Nuevo reporte");
-      setIsEditMode(false);
-      resetForm();
-      
+      setCurrentReport(report);
+      setPropertyId(report.property?.id || "");
+      setIncidentId(report.caseType?.id || "");
+      setMonitorId(report.contributedBy?.id || "");
+      setStartTime(report.incidentStartTime || "");
+      setEndTime(report.incidentEndTime || "");
+      setDescription(report.reportDetails || "");
+      setIsHighPriority(report.priority)
+      setImages(
+        report.evidences?.map((e) => {
+          const path = e.path || e.url || e.filePath || "";
+          return path.startsWith("http") ? path : `${BUCKET_URL}${path}`;
+        }) || []
+      );
+      setIncidentLocations(report.incidentLocations || []);
+      setFollowings(report.followings || []);
+    } catch (err) {
+      console.error("Error cargando reporte:", err);
+      Alert.alert("Error", "No se pudo cargar el reporte.");
+    } finally {
       setLoading(false);
     }
-  
-  }, [id, key]);
+  };
 
-  // 🔹 Enviar o actualizar reporte
+  // Validar si es edición o nuevo reporte
+  useFocusEffect(
+    useCallback(() => {
+      const refreshData = async () => {
+        try {
+          setLoading(true);
+          if (id) {
+            console.log("Editando reporte:", id);
+            setIsEditMode(true);
+            await loadReportData(String(id));
+          } else {
+            console.log("Nuevo reporte");
+            setIsEditMode(false);
+            resetForm();
+          }
+        } catch (err) {
+          console.error("Error al recargar datos:", err);
+        } finally {
+          setLoading(false);
+        }
+      };
+      refreshData();
+    }, [id])
+  );
+
+  // Enviar o actualizar reporte
   const handleSubmit = async () => {
     if (!propertyId || !monitorId || !incidentId || !description) {
       return Alert.alert(
@@ -168,12 +186,13 @@ export default function NewReport() {
       const payload = {
         property: selectedProperty,
         contributedBy: { id: monitorId },
-        caseType: { id: incidentId },
+        caseType: incidents.find((inc) => inc.id === incidentId),
         incidentDate: new Date().toISOString().split("T")[0],
         incidentStartTime: startTime,
         incidentEndTime: endTime,
         reportDetails: description,
         followings,
+        priority: isHighPriority && "ALTA",
         incidentLocations,
         evidences: images.map((uri, i) => ({
           uri,
@@ -182,7 +201,6 @@ export default function NewReport() {
         })),
       };
 
-      console.log("🚀 Payload:", payload);
 
       let result;
       if (isEditMode && id) {
@@ -204,7 +222,7 @@ export default function NewReport() {
 
       resetForm();
       setIsEditMode(false);
-      router.back();
+      router.replace("/");
     } catch (err: any) {
       console.error("Error enviando reporte:", err);
       Alert.alert("❌ Error", err.message || "No se pudo enviar el reporte.");
@@ -212,6 +230,39 @@ export default function NewReport() {
       setSubmitting(false);
     }
   };
+
+ /* const handleAddEvidence = async () => {
+  try {
+    // 1️⃣ Seleccionar imagen
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+
+    if (result.canceled) return;
+
+    const selectedFiles = result.assets.map((asset) => ({
+      uri: asset.uri,
+      name: asset.fileName || `evidence_${Date.now()}.jpg`,
+      type: asset.mimeType || "image/jpeg",
+    }));
+
+    // 2️⃣ Enviar al backend
+    const reportId = currentReport.id; // el reporte actual
+
+
+    const updatedReport = await ApiService.addPendingEvidences(reportId, selectedFiles, "1234");
+
+    Alert.alert("Evidencias agregadas", "Las imágenes se añadieron correctamente al reporte.");
+    console.log("Reporte actualizado:", updatedReport);
+
+    // 3️⃣ (Opcional) refrescar datos del reporte
+    await loadReportData(reportId);
+  } catch (error) {
+    Alert.alert("Error", "No se pudieron subir las evidencias.");
+  }
+};*/
 
   if (loading) {
     return (
@@ -247,8 +298,8 @@ export default function NewReport() {
           <Header
             title={isEditMode ? "Editar Reporte" : "Crear Reporte"}
             onBack={() => {
-            //  resetForm()
-              router.back();
+              //  resetForm()
+           router.replace("/(drawer)")
               //resetForm()
             }}
             icon={isEditMode ? "pencil-outline" : "cloud-upload-outline"}
@@ -279,33 +330,34 @@ export default function NewReport() {
               selectedId={incidentId}
               onSelect={setIncidentId}
             />
- 
 
-    <View className="mt-2 items-start">
-  <TouchableOpacity
-    onPress={() => setIsHighPriority(!isHighPriority)}
-    className={`px-4 py-2 rounded-full border flex-row items-center ${
-      isHighPriority
-        ? "bg-[#ac2b2b] border-[#C9A13B]"
-        : "bg-white border-[#C9A13B]/40"
-    }`}
-  >
-    <Ionicons
-      name={isHighPriority ? "alert-circle" : "alert-circle-outline"}
-      size={18}
-      color={isHighPriority ? "#fff" : "#C9A13B"}
-      style={{ marginRight: 6 }}
-    />
-    
-    <Text
-      className={`text-sm font-semibold ${
-        isHighPriority ? "text-white" : "text-[#C9A13B]"
-      }`}
-    >
-      {isHighPriority ? "Prioridad Alta" : "Marcar como Prioridad"}
-    </Text>
-  </TouchableOpacity>
-</View>
+            <View className="mt-2 items-start">
+              <TouchableOpacity
+                onPress={() => setIsHighPriority(!isHighPriority)}
+                className={`px-4 py-2 rounded-full border flex-row items-center ${
+                  isHighPriority
+                    ? "bg-[#ac2b2b] border-[#C9A13B]"
+                    : "bg-white border-[#C9A13B]/40"
+                }`}
+              >
+                <Ionicons
+                  name={
+                    isHighPriority ? "alert-circle" : "alert-circle-outline"
+                  }
+                  size={18}
+                  color={isHighPriority ? "#fff" : "#C9A13B"}
+                  style={{ marginRight: 6 }}
+                />
+
+                <Text
+                  className={`text-sm font-semibold ${
+                    isHighPriority ? "text-white" : "text-[#C9A13B]"
+                  }`}
+                >
+                  {isHighPriority ? "Prioridad Alta" : "Marcar como Prioridad"}
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             <View className="mt-4 flex-row gap-3">
               <View className="flex-1">
@@ -339,12 +391,10 @@ export default function NewReport() {
                 />
               </View>
             </View>
-
-            <CameraFollowings
+            <CameraFollowingsForm
               followings={followings}
               setFollowings={setFollowings}
             />
-
             <TextAreaInput
               label="Descripción"
               value={description}
@@ -363,17 +413,64 @@ export default function NewReport() {
               label="Evidencias (Imágenes)"
               images={images}
               setImages={setImages}
+              onRemoveRemoteImage={async (url) => {
+                if (!url || typeof url !== "string") return;
+                if (!currentReport || !currentReport.id) return;
+
+                try {
+                  const evidence = currentReport.evidences?.find(
+                    (e) => `${BUCKET_URL}${e.url || e.path}` === url
+                  );
+                  if (!evidence) {
+                    console.warn(
+                      "No se encontró la evidencia correspondiente:",
+                      url
+                    );
+                    return;
+                  }
+
+                  console.log("🗑️ Eliminando evidencia:", url);
+                  await ApiService.deletePendingEvidence(
+                    currentReport.id,
+                    evidence
+                  );
+                  await loadReportData(String(currentReport.id)); // ← vuelve a pedir los datos actualizados
+                  // Refrescar datos locales
+                  const updatedReport = await ApiService.getReportById(
+                    currentReport.id
+                  );
+                  setCurrentReport(updatedReport);
+                  setImages(
+                    updatedReport.evidences?.map((e) => {
+                      const path = e.path || e.url || "";
+                      return path.startsWith("http")
+                        ? path
+                        : `${BUCKET_URL}${path}`;
+                    }) || []
+                  );
+
+                  // Mensaje visual de éxito
+                  Alert.alert(
+                    "Evidencia eliminada",
+                    "La evidencia fue eliminada correctamente."
+                  );
+
+                  console.log("Evidencia eliminada:", url);
+                } catch (err) {
+                  console.error("Error eliminando evidencia:", err);
+                  Alert.alert(
+                    "Error",
+                    "No se pudo eliminar la evidencia del servidor."
+                  );
+                }
+              }}
             />
 
-
-
- <IncidentLocationsSelector
-  property={properties.find((p) => p.id === propertyId)}
-  buildings={buildings} // lista de edificios
-  onLocationsChange={setIncidentLocations}
-/> 
-
-
+            <IncidentLocationsSelector
+              property={properties.find((p) => p.id === propertyId)}
+              buildings={buildings} // lista de edificios
+              onLocationsChange={setIncidentLocations}
+            />
             <TouchableOpacity
               disabled={submitting}
               onPress={handleSubmit}

@@ -2,18 +2,16 @@ import Header from "@/app/components/common/Header";
 import EvidencesGallery from "@/app/components/ui/EvidencesGallery";
 import { ApiService } from "@/app/services/api";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
-
-
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import React, { useState } from "react";
+import { ActivityIndicator, Alert, BackHandler, Image, ScrollView, Text, TouchableOpacity, View } from "react-native";
 
 const BUCKET_URL = process.env.EXPO_PUBLIC_BUCKET;
 
 const statusLabels = {
-  PENDING: { label: "Pendiente", color: "#C9A13B" },
-  IN_PROGRESS: { label: "En proceso", color: "#2196F3" },
-  COMPLETED: { label: "Completado", color: "#4CAF50" },
+  PENDING: { label: "Pendiente", color: "#C9A13B"},
+  IN_PROGRESS: { label: "En proceso", color: "#2196F3"},
+  COMPLETED: { label: "Completado", color: "#4CAF50"},
 };
 
 export default function ReportDetail() {
@@ -22,11 +20,40 @@ export default function ReportDetail() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  useEffect(() => {
-    // Aquí llamarás a tu servicio real:
-     ApiService.getReportById(id).then(setReport).finally(() => setLoading(false));
-  }, [id]);
+useFocusEffect(
+  React.useCallback(() => {
+    let isActive = true;
 
+    const loadReport = async () => {
+      try {
+        setLoading(true);
+        const data = await ApiService.getReportById(id);
+        if (isActive) setReport(data);
+      } catch (e) {
+        console.error("Error recargando reporte:", e);
+      } finally {
+        if (isActive) setLoading(false);
+      }
+    };
+
+    // 🟡 Cargar cada vez que la pantalla se enfoca
+    loadReport();
+
+    // 🔙 Control del botón físico de retroceso
+    const onBackPress = () => {
+      router.replace("/(drawer)");
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+
+    // 🧹 Cleanup
+    return () => {
+      isActive = false;
+      subscription.remove();
+    };
+  }, [id])
+);
   const handleDelete = async () => {
     console.log("Eliminando reporte")
   Alert.alert(
@@ -64,7 +91,7 @@ export default function ReportDetail() {
 
   return (
     <View className="flex-1 bg-[#F9F7F1] mb-16">
-      <Header title="Detalle del Reporte" onBack={() => router.back()} />
+      <Header title="Detalle del Reporte" onBack={() =>router.replace("/")} />
 
       <ScrollView className="p-4">
         {/* Encabezado principal */}
@@ -182,7 +209,7 @@ export default function ReportDetail() {
         {/* Tipo de hora (si aplica) */}
           <View className="self-start px-2 py-0.5 rounded-full bg-[#EDE8D3]">
             <Text className="text-[11px] text-[#6A5F3B] font-medium">
-              {f?.timeType || "EE.UU"}
+              {f?.category || "EE.UU"}
             </Text>
           </View>
       

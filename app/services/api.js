@@ -1,4 +1,5 @@
 import { Buffer } from "buffer";
+import { Alert } from "react-native";
 const API_URL = process.env.EXPO_PUBLIC_SERVER_IP || "http://localhost:8080/api";
 global.Buffer = Buffer;
 
@@ -34,10 +35,12 @@ async function apiFetch(endpoint, options = {}) {
     }
 
     return data;
+
   } catch (err) {
     console.error("Error en apiFetch:", err.message);
     throw err;
   }
+
 }
  const formattedDate = (date) => `${String(date.getDate()).padStart(2, "0")}/${String(
       date.getMonth() + 1
@@ -48,63 +51,147 @@ export const ApiService = {
   getBuildings: (propertyId) => apiFetch(`buildings/${propertyId}`),
   getIncidents: () => apiFetch("cases"),
   getMonitors: () => apiFetch("users/agents"),
-  getReportById: (reportId) => apiFetch("pending-reports/"+reportId),
+getReportById: async (reportId) => {
+  try {
+    return await apiFetch(`pending-reports/${reportId}`);
+  } catch (err) {
+    if (err.message.includes("404")) {
+      console.warn(`⚠️ Reporte ${reportId} no encontrado (404)`);
+      return null;
+    }
+    throw err;
+  }
+},
   createReport: async (data) => {
   const formData = new FormData();
+  const date = new Date();
+  const formattedDate = (d) =>
+    d.toLocaleDateString("es-CO", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
 
+  try {
+    console.log("[createReport] Iniciando envío de reporte...");
 
-    const date = new Date();
-   
+    const reportPayload = {
+      property: data.property,
+      contributedBy: data.contributedBy,
+      caseType: data.caseType,
+      incidentDate: formattedDate(date),
+      incidentStartTime: data.incidentStartTime,
+      incidentEndTime: data.incidentEndTime,
+      followings: data.followings,
+      priority: data.priority,
+      reportDetails: data.reportDetails,
+      incidentLocations: data.incidentLocations,
+    };
 
-    console.log(" Fecha del reporte:", formattedDate);
-formData.append("pendingReport", {
-  uri: `data:application/json;base64,${Buffer.from(JSON.stringify({
-    property: data.property,
-    contributedBy: data.contributedBy,
-    caseType: data.caseType,
-    incidentDate: formattedDate(date), // 🔹 En formato dd/MM/yyyy
-    incidentStartTime: data.incidentStartTime,
-    followings:data.followings,
-    incidentEndTime: data.incidentEndTime,
-    reportDetails: data.reportDetails,
-    incidentLocations: data.incidentLocations,
-  })).toString("base64")}`,
-  name: "pendingReport.json",
-  type: "application/json",
-});
+    console.log("🧾 Payload generado:", JSON.stringify(reportPayload, null, 2));
 
+    const base64Report = Buffer.from(JSON.stringify(reportPayload)).toString("base64");
+    formData.append("pendingReport", {
+      uri: `data:application/json;base64,${base64Report}`,
+      name: "pendingReport.json",
+      type: "application/json",
+    });
 
-  // Archivos (Expo los maneja bien si vienen del picker)
-  if (data.evidences?.length > 0) {
-    data.evidences.forEach((file, i) => {
+    // Agregar evidencias
+    if (data.evidences?.length > 0) {
+      console.log(`Adjuntando ${data.evidences.length} evidencias...`);
+      data.evidences.forEach((file, i) => {
+        console.log(`   → ${file.uri}`);
+        formData.append("evidences", {
+          uri: file.uri,
+          type: file.type || "image/jpeg",
+          name: file.name || `evidence_${i}.jpg`,
+        });
+      });
+    } else {
+      console.log(" No hay evidencias para adjuntar.");
+    }
+
+    const endpoint = `${API_URL}/pending-reports`;
+    console.log("Enviando a:", endpoint);
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Userid": data.contributedBy.id.toString(),
+      },
+      body: formData,
+    });
+
+    console.log(" Respuesta recibida con código:", response.status);
+    const textResponse = await response.text();
+    console.log(" Respuesta completa (texto):", textResponse);
+
+    let result;
+    try {
+      result = JSON.parse(textResponse);
+    } catch {
+      console.warn(" Respuesta no es JSON válido.");
+      result = textResponse;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Error HTTP ${response.status}: ${JSON.stringify(result)}`);
+    }
+
+    console.log("Reporte creado correctamente:", result);
+    return result;
+  } catch (error) {
+    console.error("Error completo al enviar reporte:", error);
+    Alert.alert("Error al enviar reporte", error.message || "Error desconocido");
+    throw error;
+  }
+  },
+  addPendingEvidences: async (reportId, evidences, userId) => {
+  try {
+    console.log(`📤 Enviando ${evidences.length} evidencias al PendingReport ID: ${reportId}`);
+
+    const formData = new FormData();
+
+    evidences.forEach((file, index) => {
       formData.append("evidences", {
         uri: file.uri,
         type: file.type || "image/jpeg",
-        name: file.name || `evidence_${i}.jpg`,
+        name: file.name || `evidence_${index}.jpg`,
       });
     });
-  }
 
-  console.log("📡 Endpoint:", `${API_URL}/pending-reports`);
+    const response = await fetch(`${API_URL}/pending-reports/${reportId}/asignar-evidencia`, {
+      method: "PUT",
+      headers: {
+        "Userid": "123",
+        // 👇 Importante: NO pongas "Content-Type", fetch lo calcula solo
+      },
+      body: formData,
+    });
 
-  try {
- const response = await fetch(`${API_URL}/pending-reports`, {
-  method: "POST",
-  headers: {
-    "Userid": data.contributedBy.id.toString(), // 👈 Usa el mismo id del monitor
-  },
-  body: formData,
-});
+    const text = await response.text();
+    console.log("🧾 Respuesta:", text);
 
-    const result = await response.json();
-    console.log(" Reporte creado:", result);
+    let result;
+    try {
+      result = JSON.parse(text);
+    } catch {
+      result = text;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Error HTTP ${response.status}: ${JSON.stringify(result)}`);
+    }
+
+    console.log("Evidencias añadidas correctamente:", result);
     return result;
-
   } catch (error) {
-    console.error("🚨 Error completo al enviar:", error);
+    console.error("Error al añadir evidencias:", error);
+    throw error;
   }
-},
-updateReport: async (id, data) => {
+  },
+  updateReport: async (id, data) => {
     try {
       console.log(`✏️ Actualizando reporte ID: ${id}`);
       console.log("📦 Payload:", data);
@@ -113,17 +200,18 @@ updateReport: async (id, data) => {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          "Userid": data.contributedBy.id.toString(),
+          "Userid": "123",
         },
         body: JSON.stringify({
           property: data.property,
           contributedBy: data.contributedBy,
           caseType: data.caseType,
-          //incidentDate: data.incidentDate,
+          incidentDate: formattedDate(new Date()),
           incidentStartTime: data.incidentStartTime,
           incidentEndTime: data.incidentEndTime,
           reportDetails: data.reportDetails,
-          evidences: data.evidences || [],
+          priority:data.priority,
+          //evidences: data.evidences || [],
           followings: data.followings || [],
           persist: data.persist ?? false,
         }),
@@ -132,14 +220,14 @@ updateReport: async (id, data) => {
       const result = await response.json();
 
       if (!response.ok) {
-        console.error("⚠️ Error al actualizar reporte:", result);
+        console.error(" Error al actualizar reporte:", result);
         throw new Error(result?.error || "Error al actualizar reporte");
       }
 
-      console.log("✅ Reporte actualizado:", result);
+      console.log(" Reporte actualizado:", result);
       return result;
     } catch (error) {
-      console.error("🚨 Error en updateReport:", error.message);
+      console.error(" Error en updateReport:", error.message);
       throw error;
     }
   },
@@ -167,4 +255,32 @@ updateReport: async (id, data) => {
       throw error;
     }
   },
-};
+  deletePendingEvidence: async (reportId: number, evidence: any) => {
+  try {
+    console.log(` Eliminando evidencia del reporte pendiente ID: ${reportId}`);
+
+    const response = await fetch(`${API_URL}/pending-reports/${reportId}/eliminar-evidencia`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "Userid": "123",
+      },
+      body: JSON.stringify(evidence), // se envía el objeto Evidence completo
+    });
+
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      console.error("Error al eliminar evidencia:", result);
+      throw new Error(result?.error || "Error al eliminar evidencia");
+    }
+
+    const updatedReport = await response.json();
+    console.log(" Evidencia eliminada correctamente.");
+    return updatedReport; // Devuelve el PendingReport actualizado
+
+  } catch (error) {
+    console.error(" Error en deletePendingEvidence:", error.message);
+    throw error;
+  }
+  },
+}
