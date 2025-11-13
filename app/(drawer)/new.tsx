@@ -278,8 +278,9 @@ const [followings, setFollowings] = useState([]); // vacío al inicio
   return (
     <ScrollView
       ref={scrollRef}
-      showsVerticalScrollIndicator={false}
+  
       contentContainerStyle={{ paddingBottom: 0 }}
+   
       className="px-3"
     >
       <View key={id || "new"} className="flex-1 bg-gray-50">
@@ -471,6 +472,7 @@ const [followings, setFollowings] = useState([]); // vacío al inicio
               buildings={buildings} // lista de edificios
               onLocationsChange={setIncidentLocations}
             />
+
             <TouchableOpacity
               disabled={submitting}
               onPress={handleSubmit}

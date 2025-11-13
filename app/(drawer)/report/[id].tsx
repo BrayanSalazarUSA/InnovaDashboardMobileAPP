@@ -1,5 +1,6 @@
 import Header from "@/app/components/common/Header";
 import EvidencesGallery from "@/app/components/ui/EvidencesGallery";
+import IncidentLocationsViewer from "@/app/components/ui/IncidentLocationsViewer";
 import { ApiService } from "@/app/services/api";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -93,7 +94,7 @@ useFocusEffect(
     <View className="flex-1 bg-[#F9F7F1] mb-16">
       <Header title="Detalle del Reporte" onBack={() =>router.replace("/")} />
 
-      <ScrollView className="p-4">
+      <ScrollView className="p-4" >
         {/* Encabezado principal */}
     
 {/* Encabezado principal */}
@@ -222,6 +223,17 @@ useFocusEffect(
   )}
 </View>
      <EvidencesGallery report={report} BUCKET_URL={BUCKET_URL}/>
+  {/* Ubicaciones del incidente */}
+{report?.incidentLocations?.length > 0 && (
+  <View className="bg-white rounded-2xl p-4 mb-6 shadow-sm border border-[#EDE8D3]">
+    <SectionTitle text="Ubicaciones del incidente" />
+
+  <IncidentLocationsViewer
+  property={report.property}
+  locations={report.incidentLocations}
+/>
+  </View>
+)}
       </ScrollView>
     </View>
   );

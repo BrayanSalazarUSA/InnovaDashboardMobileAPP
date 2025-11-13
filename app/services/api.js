@@ -85,11 +85,15 @@ getReportById: async (reportId) => {
       followings: data.followings,
       priority: data.priority,
       reportDetails: data.reportDetails,
-      incidentLocations: data.incidentLocations,
+      incidentLocations: data.incidentLocations.map((loc) => ({
+    latitude: loc.latitude,
+    longitude: loc.longitude,
+    floor: loc.floor ?? null,
+    building: loc.building ? { id: loc.building.id } : null,
+    })), 
     };
-
+    
     console.log("🧾 Payload generado:", JSON.stringify(reportPayload, null, 2));
-
     const base64Report = Buffer.from(JSON.stringify(reportPayload)).toString("base64");
     formData.append("pendingReport", {
       uri: `data:application/json;base64,${base64Report}`,

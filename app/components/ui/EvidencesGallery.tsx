@@ -51,7 +51,7 @@ export default function EvidencesGallery({ report, BUCKET_URL }: any) {
             );
           })
         ) : (
-          <Text className="text-gray-500 text-center w-full mt-2 italic">
+          <Text className="text-gray-500 text-center w-full mb-4 italic">
             No hay evidencias registradas.
           </Text>
         )}
