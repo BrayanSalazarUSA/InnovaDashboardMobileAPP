@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "pending-reports-mobile",
+    "name": "Dashboard APP",
     "slug": "pending-reports-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/logo-innova.png",
     "scheme": "pendingreportsmobile",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -15,24 +15,24 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/logo-innova.png",
+        "monochromeImage": "./assets/images/logo-innova.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.vinixius99.pendingreportsmobile"
+      "package": "com.vinixius99.pendingreportsmobile",
+        "googleMapsApiKey": "AIzaSyC5w6JDrPKalwOGCYjatejmSHDyP63jQdc"
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/logo-innova.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/logo-innova.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",

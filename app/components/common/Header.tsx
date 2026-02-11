@@ -1,15 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
-import React from "react";
-import { Image, Text, TouchableOpacity, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-
+import { Text, TouchableOpacity, View } from "react-native";
+ 
 type Props = {
   title: string;
   onBack?: () => void;
 };
 
 export default function Header({ title, onBack, icon="menu-outline" }: Props) {
-  const insets = useSafeAreaInsets();
+ ;
 
   return (
     <View

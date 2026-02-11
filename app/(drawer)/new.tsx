@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 
+import { ApiService } from "../../services/api";
 import Header from "../components/common/Header";
 import CameraFollowingsForm from "../components/ui/CamerasFollowingForm";
 import ImageUploader from "../components/ui/ImageUploader";
@@ -20,7 +21,6 @@ import MonitorPicker from "../components/ui/MonitorPicker";
 import PropertyPicker from "../components/ui/PropertyPicker";
 import TextAreaInput from "../components/ui/TextAreaInput";
 import TimePickerInput from "../components/ui/TimePickerInput";
-import { ApiService } from "../services/api";
 
 const BUCKET_URL = process.env.EXPO_PUBLIC_BUCKET;
 
@@ -41,7 +41,7 @@ export default function NewReport() {
   const [images, setImages] = useState<string[]>([]);
   const [monitorId, setMonitorId] = useState("");
   const [incidentLocations, setIncidentLocations] = useState<any[]>([]);
-const [followings, setFollowings] = useState([]); // vacío al inicio
+  const [followings, setFollowings] = useState([]); // vacío al inicio
   const [isHighPriority, setIsHighPriority] = useState(false);
 
   // Listas base
@@ -62,7 +62,7 @@ const [followings, setFollowings] = useState([]); // vacío al inicio
     setMonitorId("");
     setIsHighPriority(false);
     setIncidentLocations([]);
-  setFollowings([]);
+    setFollowings([]);
   };
 
   // Forzar remount del formulario si cambia ID
@@ -81,7 +81,8 @@ const [followings, setFollowings] = useState([]); // vacío al inicio
   );
 
   // Cargar catálogos base
-  useEffect(() => {
+useFocusEffect(
+  useCallback(() => {
     const loadInitialData = async () => {
       try {
         const [props, mons, incs] = await Promise.all([
@@ -89,6 +90,7 @@ const [followings, setFollowings] = useState([]); // vacío al inicio
           ApiService.getMonitors(),
           ApiService.getIncidents(),
         ]);
+
         setProperties(props || []);
         setMonitors(mons || []);
         setIncidents(incs || []);
@@ -96,8 +98,10 @@ const [followings, setFollowings] = useState([]); // vacío al inicio
         console.error("Error cargando catálogos:", err);
       }
     };
+
     loadInitialData();
-  }, []);
+  }, [])
+);
 
   // Cargar edificios según propiedad seleccionada
   useEffect(() => {
@@ -128,7 +132,7 @@ const [followings, setFollowings] = useState([]); // vacío al inicio
       setStartTime(report.incidentStartTime || "");
       setEndTime(report.incidentEndTime || "");
       setDescription(report.reportDetails || "");
-      setIsHighPriority(report.priority)
+      setIsHighPriority(report.priority);
       setImages(
         report.evidences?.map((e) => {
           const path = e.path || e.url || e.filePath || "";
@@ -172,10 +176,19 @@ const [followings, setFollowings] = useState([]); // vacío al inicio
 
   // Enviar o actualizar reporte
   const handleSubmit = async () => {
-    if (!propertyId || !monitorId || !incidentId || !description) {
+    const missingFields: string[] = [];
+
+    if (!propertyId) missingFields.push("Propiedad");
+    if (!monitorId) missingFields.push("Monitor responsable");
+    if (!incidentId) missingFields.push("Tipo de incidente");
+    if (!description) missingFields.push("Descripción");
+    if (!startTime) missingFields.push("Hora de inicio");
+    if (!endTime) missingFields.push("Hora de fin");
+
+    if (missingFields.length > 0) {
       return Alert.alert(
-        "Campos faltantes",
-        "Por favor, completa todos los campos obligatorios."
+        "⚠️ Campos faltantes",
+        `Por favor completa los siguientes campos:\n\n• ${missingFields.join("\n• ")}`
       );
     }
 
@@ -200,7 +213,6 @@ const [followings, setFollowings] = useState([]); // vacío al inicio
           name: `evidence_${i}.jpg`,
         })),
       };
-
 
       let result;
       if (isEditMode && id) {
@@ -231,38 +243,6 @@ const [followings, setFollowings] = useState([]); // vacío al inicio
     }
   };
 
- /* const handleAddEvidence = async () => {
-  try {
-    // 1️⃣ Seleccionar imagen
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      quality: 0.8,
-    });
-
-    if (result.canceled) return;
-
-    const selectedFiles = result.assets.map((asset) => ({
-      uri: asset.uri,
-      name: asset.fileName || `evidence_${Date.now()}.jpg`,
-      type: asset.mimeType || "image/jpeg",
-    }));
-
-    // 2️⃣ Enviar al backend
-    const reportId = currentReport.id; // el reporte actual
-
-
-    const updatedReport = await ApiService.addPendingEvidences(reportId, selectedFiles, "1234");
-
-    Alert.alert("Evidencias agregadas", "Las imágenes se añadieron correctamente al reporte.");
-    console.log("Reporte actualizado:", updatedReport);
-
-    // 3️⃣ (Opcional) refrescar datos del reporte
-    await loadReportData(reportId);
-  } catch (error) {
-    Alert.alert("Error", "No se pudieron subir las evidencias.");
-  }
-};*/
 
   if (loading) {
     return (
@@ -278,9 +258,7 @@ const [followings, setFollowings] = useState([]); // vacío al inicio
   return (
     <ScrollView
       ref={scrollRef}
-  
       contentContainerStyle={{ paddingBottom: 0 }}
-   
       className="px-3"
     >
       <View key={id || "new"} className="flex-1 bg-gray-50">
@@ -300,7 +278,7 @@ const [followings, setFollowings] = useState([]); // vacío al inicio
             title={isEditMode ? "Editar Reporte" : "Crear Reporte"}
             onBack={() => {
               //  resetForm()
-           router.replace("/(drawer)")
+              router.replace("/(drawer)");
               //resetForm()
             }}
             icon={isEditMode ? "pencil-outline" : "cloud-upload-outline"}
@@ -452,11 +430,10 @@ const [followings, setFollowings] = useState([]); // vacío al inicio
 
                   // Mensaje visual de éxito
                   Alert.alert(
-                    "Evidencia eliminada",
+                    "✅ Evidencia eliminada",
                     "La evidencia fue eliminada correctamente."
                   );
-
-                  console.log("Evidencia eliminada:", url);
+          
                 } catch (err) {
                   console.error("Error eliminando evidencia:", err);
                   Alert.alert(
@@ -466,12 +443,13 @@ const [followings, setFollowings] = useState([]); // vacío al inicio
                 }
               }}
             />
-
-            <IncidentLocationsSelector
-              property={properties.find((p) => p.id === propertyId)}
-              buildings={buildings} // lista de edificios
-              onLocationsChange={setIncidentLocations}
-            />
+            {!isEditMode && (
+              <IncidentLocationsSelector
+                property={properties.find((p) => p.id === propertyId)}
+                buildings={buildings} // lista de edificios
+                onLocationsChange={setIncidentLocations}
+              />
+            )}
 
             <TouchableOpacity
               disabled={submitting}

@@ -1,36 +1,67 @@
-import { ApiService } from "@/app/services/api";
-import React, { useEffect, useRef, useState } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import { ApiService } from "../../../services/api";
 
-const API_URL = process.env.EXPO_PUBLIC_SERVER_IP || "http://localhost:8080/api";
+
+const API_URL =
+  process.env.EXPO_PUBLIC_SERVER_IP || "http://localhost:8080/api";
 
 type Props = {
   property: any;
   locations: any[];
 };
 
-export default function IncidentLocationsViewer({ property, locations }: Props) {
+function IncidentLocationsViewer({ property, locations }: Props) {
   const mapRef = useRef<MapView>(null);
-  const [currentRegion, setCurrentRegion] = useState<any>(null);
+  const [region, setRegion] = useState<any>(null);
 
-  // 🔄 Cargar property completa si vienen coordenadas vacías
+  // -----------------------------------------
+  // 📌 Cargar coordenadas de property si faltan
+  // -----------------------------------------
   useEffect(() => {
-    if (!property || !property.id) return;
+    if (!property?.id) return;
 
     if (property.latitude == null || property.longitude == null) {
       loadProperty(property.id);
+      return;
     }
+
+    setRegion((prev) => {
+      const r = {
+        latitude: property.latitude,
+        longitude: property.longitude,
+        latitudeDelta: 0.003,
+        longitudeDelta: 0.003,
+      };
+
+      // Evita reconfigurar mapa si ya está igual
+      if (
+        prev &&
+        prev.latitude === r.latitude &&
+        prev.longitude === r.longitude
+      ) {
+        return prev;
+      }
+
+      return r;
+    });
   }, [property]);
+
+  function resetToPropertyCenter() {
+  if (!region || !mapRef.current) return;
+
+  mapRef.current.animateToRegion(region, 600);
+}
 
   async function loadProperty(id) {
     try {
       const props = await ApiService.getProperties();
       const full = props.find((p) => p.id === id);
-
       if (!full?.latitude || !full?.longitude) return;
 
-      setCurrentRegion({
+      setRegion({
         latitude: full.latitude,
         longitude: full.longitude,
         latitudeDelta: 0.003,
@@ -41,70 +72,113 @@ export default function IncidentLocationsViewer({ property, locations }: Props) 
     }
   }
 
-  // 🎯 Región inicial cuando sí vienen coords
-  useEffect(() => {
-    if (!property || property.latitude == null) return;
+  // -----------------------------------------
+  // 📌 Item memoizado (FlatList optimizada)
+  // -----------------------------------------
+  const renderLocationItem = useCallback(
+    ({ item, index }) => {
+      const isExterior = !item.building;
 
-    // 👌 Zoom más cerrado para evitar desplazamientos del marker
-    const region = {
-      latitude: property.latitude,
-      longitude: property.longitude,
-      latitudeDelta: 0.003,
-      longitudeDelta: 0.003,
-    };
+      return (
+        <View style={styles.locationCardWrapper}>
+          <View style={styles.locationLeftSide}>
+            <Ionicons
+              name="location-sharp"
+              size={22}
+              color="#1E88E5"
+              style={{ marginRight: 6 }}
+            />
+            <Text style={styles.locationZoneLabel}>Zona #{index + 1}</Text>
+          </View>
 
-    setCurrentRegion(region);
+          <View style={styles.locationRightSide}>
+            <View style={styles.locationRow}>
+              <MaterialCommunityIcons
+                name={isExterior ? "tree" : "office-building"}
+                size={18}
+                color="#555"
+                style={{ marginRight: 4 }}
+              />
+              <Text style={styles.locationText}>
+                {item.building?.name ?? "Zona exterior"}
+              </Text>
+            </View>
 
-    setTimeout(() => {
-      mapRef.current?.animateToRegion(region, 500);
-    }, 300);
-  }, [property]);
+            {item.floor && (
+              <View style={styles.locationRow}>
+                <MaterialCommunityIcons
+                  name="stairs"
+                  size={18}
+                  color="#555"
+                  style={{ marginRight: 4 }}
+                />
+                <Text style={styles.locationText}>Piso {item.floor}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      );
+    },
+    []
+  );
+
+  const MemoList = memo(renderLocationItem);
 
   return (
     <View style={{ flex: 1 }}>
       <Text style={styles.title}>Ubicaciones del incidente</Text>
 
-      {/* 🗺️ MAPA */}
+      {/* MAPA */}
       <View style={{ marginBottom: 10 }}>
-        {currentRegion ? (
-          <MapView
+          {/* BOTÓN FLOTANTE PARA CENTRAR */}
+  {region && (
+    <TouchableOpacity
+      onPress={resetToPropertyCenter}
+      style={styles.centerButton}
+    >
+  
+      <Ionicons name="locate" size={22} color="#333" /> 
+    </TouchableOpacity>
+  )}
+        {region ? (
+            <MapView
             ref={mapRef}
             style={{ width: "100%", height: 320 }}
             provider={PROVIDER_GOOGLE}
-            initialRegion={currentRegion}
-            // 🔥 Zoom habilitado
+            region={region} // 👈 Región controlada (zoom fijo)
             zoomEnabled={true}
             scrollEnabled={true}
             rotateEnabled={false}
             pitchEnabled={false}
             showsPointsOfInterest={false}
             toolbarEnabled={false}
-            mapType="hybrid"
+            minZoomLevel={16}
+            maxZoomLevel={20}
+            mapType="satellite"
           >
-            {/* 📍 Marcadores */}
             {locations.map((loc, i) =>
               loc.latitude && loc.longitude ? (
                 <Marker
-                  key={`loc-${i}`}
-                  coordinate={{ latitude: loc.latitude, longitude: loc.longitude }}
-                  title={loc.building?.name ?? "Zona exterior"}
-                  description={loc.floor ? `Piso ${loc.floor}` : undefined}
-                />
-              ) : null
-            )}
-
-            {/* 🏢 Labels */}
-            {locations.map((loc, i) =>
-              loc.latitude && loc.longitude ? (
-                <Marker
-                  key={`label-${i}`}
-                  coordinate={{ latitude: loc.latitude, longitude: loc.longitude }}
-                  anchor={{ x: 0.5, y: 1.4 }}
+                  key={i}
+                  coordinate={{
+                    latitude: loc.latitude,
+                    longitude: loc.longitude,
+                  }}
+                   anchor={{ x: 0.5, y: 0.6 }}   // 👈 Ajusta el “pie” del marker
                 >
-                  <View style={styles.buildingLabel}>
-                    <Text numberOfLines={1} style={styles.buildingLabelText}>
-                      {loc.building?.name ?? "Exterior"}
-                    </Text>
+                  {/* 📌 UNA sola vista para pin + label */}
+                  <View style={{ alignItems: "center" }}>
+                    <MaterialCommunityIcons
+                      name="map-marker"
+                      size={25}
+                      color="#FF3D00"
+                    />
+
+                    <View style={styles.buildingLabel}>
+                      <Text style={styles.buildingLabelText}>
+                        {loc.building?.name ?? "Exterior"}
+                      </Text>
+                    </View>
                   </View>
                 </Marker>
               ) : null
@@ -112,35 +186,66 @@ export default function IncidentLocationsViewer({ property, locations }: Props) 
           </MapView>
         ) : (
           <View style={styles.noMap}>
-            <Text style={{ color: "#666" }}>No hay coordenadas disponibles.</Text>
+            <Text style={{ color: "#666" }}>
+              No hay coordenadas disponibles.
+            </Text>
           </View>
         )}
       </View>
 
-      {/* 🧾 LISTA */}
+      {/* LISTA */}
       <FlatList
-        nestedScrollEnabled
-        contentContainerStyle={{ paddingBottom: 20 }}
+      scrollEnabled={false}
         data={locations}
+        renderItem={renderLocationItem}
         keyExtractor={(item) => item.id.toString()}
-        renderItem={({ item, index }) => (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Zona #{index + 1}</Text>
-            <Text style={styles.cardText}>
-              {item.building?.name ?? "Zona exterior"}{" "}
-              {item.floor ? `• Piso ${item.floor}` : ""}
-            </Text>
-            <Text style={styles.coords}>
-              {item.latitude.toFixed(6)}, {item.longitude.toFixed(6)}
-            </Text>
-          </View>
-        )}
+        contentContainerStyle={{ paddingBottom: 8 }}
       />
     </View>
   );
 }
 
+export default memo(IncidentLocationsViewer);
+
 const styles = StyleSheet.create({
+  locationCardWrapper: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    padding: 7,
+    marginBottom: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E8E8E8",
+    alignItems: "center",
+  },
+
+  locationLeftSide: {
+    flexDirection: "row",
+    alignItems: "center",
+    width: 120,
+  },
+
+  locationZoneLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#111",
+  },
+
+  locationRightSide: {
+    flex: 1,
+    marginLeft: 8,
+  },
+
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 1,
+  },
+
+  locationText: {
+    fontSize: 14,
+    color: "#444",
+  },
   title: {
     color: "#A67C00",
     fontWeight: "bold",
@@ -165,31 +270,38 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginBottom: 4,
   },
-  cardText: {
-    color: "#333",
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  coords: {
-    color: "#777",
-    fontSize: 12,
-  },
-  buildingLabel: {
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  buildingLabelText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 12,
-  },
+  cardText: { color: "#333", fontSize: 14, marginBottom: 4 },
+  coords: { color: "#777", fontSize: 12 },
+buildingLabel: {
+  backgroundColor: "rgba(0,0,0,0.6)",
+  paddingHorizontal: 2,
+  paddingVertical: 3,
+  borderRadius: 6,
+  maxWidth: 400,       // 👈 ancho máximo
+},
+
+buildingLabelText: {
+  color: "#fff",
+  fontWeight: "bold",
+  fontSize: 12,
+  flexShrink: 1,       // 👈 permite reducirse si no cabe
+  flexWrap: "wrap",    // 👈 permite saltar a otra línea
+},
+
   noMap: {
     width: "100%",
     height: 320,
     backgroundColor: "#f0f0f0",
     justifyContent: "center",
     alignItems: "center",
+  },
+   centerButton: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    zIndex:1000,
+    backgroundColor: "#A67C00",
+    padding: 10,
+    borderRadius: 25,
   },
 });

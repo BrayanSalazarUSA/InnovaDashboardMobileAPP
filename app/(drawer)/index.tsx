@@ -71,12 +71,7 @@ export default function HomeScreen() {
     });
   }, [reports, search, dateFilter]);
 
-  // 🔹 Paginación en memoria
-  const totalPages = Math.ceil(filteredReports.length / itemsPerPage);
-  const paginatedReports = filteredReports.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+
 
   const navigateToDetails = (id) => router.replace(`/report/${id}`);
 
@@ -155,7 +150,7 @@ export default function HomeScreen() {
 
           {/* 🔹 Lista de reportes */}
           <FlatList
-            data={paginatedReports}
+            data={filteredReports} 
             renderItem={({ item }) => (
               <ReportItem report={item} onPress={() => navigateToDetails(item.id)} />
             )}
@@ -166,43 +161,7 @@ export default function HomeScreen() {
             onRefresh={fetchReports}
           />
 
-          {/* 🔹 Controles de paginación */}
-          {filteredReports.length > itemsPerPage && (
-            <View className="flex-row justify-center items-center mt-2 mb-4">
-              <TouchableOpacity
-                onPress={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className={`px-3 py-2 mx-1 rounded-full ${
-                  currentPage === 1 ? "bg-gray-200" : "bg-[#C9A13B]"
-                }`}
-              >
-                <Ionicons
-                  name="chevron-back"
-                  size={18}
-                  color={currentPage === 1 ? "#888" : "#fff"}
-                />
-              </TouchableOpacity>
-
-              <Text className="mx-2 text-[#1C1C1C] font-medium">
-                Página {currentPage} / {totalPages}
-              </Text>
-
-              <TouchableOpacity
-                onPress={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className={`px-3 py-2 mx-1 rounded-full ${
-                  currentPage === totalPages ? "bg-gray-200" : "bg-[#C9A13B]"
-                }`}
-              >
-                <Ionicons
-                  name="chevron-forward"
-                  size={18}
-                  color={currentPage === totalPages ? "#888" : "#fff"}
-                />
-              </TouchableOpacity>
-            </View>
-          )}
-
+     
           {/* 🟡 Botón flotante */}
           <View className="absolute bottom-8 left-4 right-4 mb-5">
             <Button

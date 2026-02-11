@@ -1,5 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -38,10 +38,16 @@ export default function IncidentLocationsSelector({
   const [buildingItems, setBuildingItems] = useState<any[]>([]);
   const [searchText, setSearchText] = useState("");
 
-  // 🔸 Crea lista de edificios
+useEffect(() => {
+  if (property == null) {
+    setIncidentLocations([]);
+  }
+}, [property]);
+
+  // Crea lista de edificios
   useEffect(() => {
     const items = [
-      { label: "Zona exterior 🌳", value: null },
+      { label: "Zona exterior", value: null },
       ...buildings.map((b) => ({
         label: `🏢 ${b.name}`,
         value: b.id,
@@ -54,22 +60,20 @@ export default function IncidentLocationsSelector({
     b.label.toLowerCase().includes(searchText.toLowerCase())
   );
 
-  // 🔸 Inicializa el mapa
+  // Inicializa el mapa
   useEffect(() => {
     if (!property?.latitude || !property?.longitude) {
       setCurrentRegion(null);
       return;
     }
 
-    const zoom = property.zoom ? property.zoom - 1 : 16;
-    const latitudeDelta = 1 / Math.pow(2, zoom - 8);
-    const longitudeDelta = latitudeDelta * (16 / 9);
+    const zoom = property.zoom ? property.zoom : 17;
 
     const region = {
       latitude: property.latitude,
       longitude: property.longitude,
-      latitudeDelta,
-      longitudeDelta,
+      latitudeDelta: 0.003,
+      longitudeDelta: 0.003,
     };
 
     setCurrentRegion(region);
@@ -88,9 +92,15 @@ export default function IncidentLocationsSelector({
   const handleMapPress = (e: any) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
     setSelectedCoords({ latitude, longitude });
-    setSelectedBuilding(null);
-    setSelectedFloor(null);
-    setModalVisible(true);
+
+    // Cierra dropdowns para que no intercepten toques
+    setOpenBuilding(false);
+    setOpenFloor(false);
+
+    // Micro-delay para asegurar que el estado anterior se compromete antes de abrir el modal
+    setTimeout(() => {
+      setModalVisible(true);
+    }, 0);
   };
 
   // 🔸 Confirmar ubicación
@@ -101,8 +111,7 @@ export default function IncidentLocationsSelector({
       id: Date.now(), // ← ESTE FIX ES CLAVE
       latitude: selectedCoords.latitude,
       longitude: selectedCoords.longitude,
-      building:
-        selectedBuilding === null ? null : { id: selectedBuilding },
+      building: selectedBuilding === null ? null : { id: selectedBuilding },
       floor: selectedFloor,
     };
 
@@ -120,6 +129,30 @@ export default function IncidentLocationsSelector({
     }
   };
 
+  const CLEAN_MAP_STYLE = [
+  {
+    featureType: "all",
+    elementType: "labels",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "road",
+    elementType: "geometry",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "poi",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "transit",
+    stylers: [{ visibility: "off" }],
+  },
+  {
+    featureType: "administrative",
+    stylers: [{ visibility: "off" }],
+  },
+];
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
@@ -129,20 +162,21 @@ export default function IncidentLocationsSelector({
         <Text style={styles.title}>Ubicaciones del incidente</Text>
 
         {/* 🗺️ MAPA */}
-        <View style={{ marginBottom: 80 }}>
+        <View style={{ marginBottom: 20 }}>
           {currentRegion ? (
             <MapView
               ref={mapRef}
-              pointerEvents={modalVisible ? "none" : "auto"}
               provider={PROVIDER_GOOGLE}
               style={{ width: "100%", height: 320, flex: 1 }}
               initialRegion={currentRegion}
               onPress={handleMapPress}
               showsPointsOfInterest={false}
               toolbarEnabled={false}
-              mapType="hybrid"
+              mapType="satellite"
+              zoomEnabled={true}
               minZoomLevel={16}
               maxZoomLevel={20}
+              //liteMode={false}
             >
               {/* Marcadores del incidente */}
               {incidentLocations.map((loc) => (
@@ -171,9 +205,13 @@ export default function IncidentLocationsSelector({
                     <Marker
                       key={`building-${b.id}`}
                       coordinate={{ latitude: b.lat, longitude: b.lon }}
+                      anchor={{ x: 0.4, y: 0.22 }}
                     >
                       <View style={styles.buildingLabel}>
-                        <Text numberOfLines={1} style={styles.buildingLabelText}>
+                        <Text
+                          numberOfLines={1}
+                          style={styles.buildingLabelText}
+                        >
                           {b.name}
                         </Text>
                       </View>
@@ -183,14 +221,23 @@ export default function IncidentLocationsSelector({
             </MapView>
           ) : (
             <View style={styles.noMap}>
-              <Text style={{ color: "#666" }}>
-                Esta propiedad aún no tiene coordenadas configuradas
+              <MaterialCommunityIcons
+                name="map-marker-off"
+                size={48}
+                color="#999"
+              />
+              <Text style={styles.noMapTitle}>Sin coordenadas</Text>
+              <Text style={styles.noMapSubtitle}>
+                Esta propiedad aún no tiene ubicación configurada.
               </Text>
             </View>
           )}
 
           {currentRegion && (
-            <TouchableOpacity onPress={handleCenterMap} style={styles.centerButton}>
+            <TouchableOpacity
+              onPress={handleCenterMap}
+              style={styles.centerButton}
+            >
               <Ionicons name="locate" size={24} color="#fff" />
             </TouchableOpacity>
           )}
@@ -198,14 +245,14 @@ export default function IncidentLocationsSelector({
 
         {/* 📌 LISTA DE UBICACIONES */}
         <FlatList
-          nestedScrollEnabled
-          style={{ maxHeight: 250 }}
+          scrollEnabled={false}
+          style={{ maxHeight: 250, marginBottom: 20 }}
           data={incidentLocations}
           keyExtractor={(item) => item.id.toString()} // ← FIX IMPORTANTE
           renderItem={({ item, index }) => (
             <View style={styles.card}>
               <Text style={styles.cardText}>
-                📍 Zona #{index + 1} —{" "}
+                📍 Zona #{index + 1} — {" "}
                 {item.building
                   ? `${buildings.find((b) => b.id === item.building.id)?.name}${
                       item.floor ? ` — Piso ${item.floor}` : ""
@@ -223,7 +270,6 @@ export default function IncidentLocationsSelector({
             </View>
           )}
         />
-
         {/* MODAL */}
         <LocationSelectionModal
           visible={modalVisible}
@@ -289,10 +335,27 @@ const styles = StyleSheet.create({
   },
   noMap: {
     width: "100%",
-    height: 320,
-    backgroundColor: "#eee",
+    height: 160,
+    backgroundColor: "#f5f5f5",
     justifyContent: "center",
     alignItems: "center",
-    borderRadius: 12,
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+
+  noMapTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#444",
+    marginBottom: 4,
+  },
+
+  noMapSubtitle: {
+    fontSize: 14,
+    color: "#777",
+    textAlign: "center",
+    lineHeight: 20,
   },
 });

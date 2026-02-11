@@ -7,8 +7,6 @@ export default function EvidencesGallery({ report, BUCKET_URL }: any) {
   const [refreshKey, setRefreshKey] = useState(Date.now()); // 🔑 Fuerza recarga de imágenes
 
   useEffect(() => {
-    console.log("🟡 Report cambió, actualizando evidencias...");
-    console.log(report);
 
     if (report?.evidences?.length) {
       setEvidences(report.evidences);
@@ -18,7 +16,6 @@ export default function EvidencesGallery({ report, BUCKET_URL }: any) {
     }
 
     return () => {
-      console.log("🧹 Limpiando evidencias al desmontar o cambiar reporte");
       setSelectedImage(null);
       setEvidences([]);
     };
