@@ -25,15 +25,19 @@ export default function ImageUploader({
   setImages,
   label,
   onRemoveRemoteImage,
-  maxImages = 5,
+  maxImages = 10,
 }: Props) {
   const [refreshKey, setRefreshKey] = useState(Date.now()); // 🔁 fuerza actualización visual
 
   const pickImage = async () => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert("Permiso requerido", "Debes permitir el acceso a tus fotos.");
+        Alert.alert(
+          "Permiso requerido",
+          "Debes permitir el acceso a tus fotos.",
+        );
         return;
       }
 
@@ -116,8 +120,9 @@ export default function ImageUploader({
       {images.length > 0 && (
         <View className="flex flex-wrap flex-row justify-between mt-5">
           {images.map((uri, i) => {
-            const cacheBypassUri =
-              uri.startsWith("http") ? `${uri}?v=${refreshKey}` : uri;
+            const cacheBypassUri = uri.startsWith("http")
+              ? `${uri}?v=${refreshKey}`
+              : uri;
 
             return (
               <View
@@ -125,7 +130,7 @@ export default function ImageUploader({
                 style={{
                   width: (screenWidth - 60) / 2,
                   aspectRatio: 1,
-                  borderRadius: 16, 
+                  borderRadius: 16,
                   marginBottom: 12,
                   position: "relative",
                   backgroundColor: "#f8f8f8",

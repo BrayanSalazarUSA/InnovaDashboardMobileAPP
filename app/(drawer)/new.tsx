@@ -1,5 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -10,7 +11,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-
 import { ApiService } from "../../services/api";
 import Header from "../components/common/Header";
 import CameraFollowingsForm from "../components/ui/CamerasFollowingForm";
@@ -23,6 +23,7 @@ import TextAreaInput from "../components/ui/TextAreaInput";
 import TimePickerInput from "../components/ui/TimePickerInput";
 
 const BUCKET_URL = process.env.EXPO_PUBLIC_BUCKET;
+const REPORT_DRAFT_KEY = "NEW_REPORT_DRAFT";
 
 export default function NewReport() {
   const router = useRouter();
@@ -65,6 +66,27 @@ export default function NewReport() {
     setFollowings([]);
   };
 
+  const saveDraft = async () => {
+    try {
+      const draft = {
+        propertyId,
+        incidentId,
+        startTime,
+        endTime,
+        description,
+        images,
+        monitorId,
+        incidentLocations,
+        followings,
+        isHighPriority,
+      };
+
+      await SecureStore.setItemAsync(REPORT_DRAFT_KEY, JSON.stringify(draft));
+    } catch (err) {
+      console.warn("No se pudo guardar el borrador:", err);
+    }
+  };
+
   // Forzar remount del formulario si cambia ID
   const [key, setKey] = useState(0);
   useEffect(() => {
@@ -73,35 +95,63 @@ export default function NewReport() {
 
   const scrollRef = useRef<ScrollView>(null);
 
+  useEffect(() => {
+    const loadDraft = async () => {
+      try {
+        if (id) return; // ❌ si es edición, NO cargar draft
+
+        const saved = await SecureStore.getItemAsync(REPORT_DRAFT_KEY);
+        if (!saved) return;
+
+        const draft = JSON.parse(saved);
+
+        setPropertyId(draft.propertyId || "");
+        setIncidentId(draft.incidentId || "");
+        setStartTime(draft.startTime || "");
+        setEndTime(draft.endTime || "");
+        setDescription(draft.description || "");
+        setImages(draft.images || []);
+        setMonitorId(draft.monitorId || "");
+        setIncidentLocations(draft.incidentLocations || []);
+        setFollowings(draft.followings || []);
+        setIsHighPriority(draft.isHighPriority || false);
+      } catch (err) {
+        console.warn("No se pudo restaurar el borrador:", err);
+      }
+    };
+
+    loadDraft();
+  }, []);
+
   // Mover scroll al inicio cada vez que la pantalla se enfoque
   useFocusEffect(
     useCallback(() => {
       scrollRef.current?.scrollTo({ y: 0, animated: false });
-    }, [])
+    }, []),
   );
 
   // Cargar catálogos base
-useFocusEffect(
-  useCallback(() => {
-    const loadInitialData = async () => {
-      try {
-        const [props, mons, incs] = await Promise.all([
-          ApiService.getProperties(),
-          ApiService.getMonitors(),
-          ApiService.getIncidents(),
-        ]);
+  useFocusEffect(
+    useCallback(() => {
+      const loadInitialData = async () => {
+        try {
+          const [props, mons, incs] = await Promise.all([
+            ApiService.getProperties(),
+            ApiService.getMonitors(),
+            ApiService.getIncidents(),
+          ]);
 
-        setProperties(props || []);
-        setMonitors(mons || []);
-        setIncidents(incs || []);
-      } catch (err) {
-        console.error("Error cargando catálogos:", err);
-      }
-    };
+          setProperties(props || []);
+          setMonitors(mons || []);
+          setIncidents(incs || []);
+        } catch (err) {
+          console.error("Error cargando catálogos:", err);
+        }
+      };
 
-    loadInitialData();
-  }, [])
-);
+      loadInitialData();
+    }, []),
+  );
 
   // Cargar edificios según propiedad seleccionada
   useEffect(() => {
@@ -118,6 +168,23 @@ useFocusEffect(
     loadBuildings();
   }, [propertyId]);
 
+  //Guardar AUTOMÁTICAMENTE cuando el usuario escribe
+  useEffect(() => {
+    if (isEditMode) return; // ❌ NO guardar borrador en edición
+    saveDraft();
+  }, [
+    propertyId,
+    incidentId,
+    startTime,
+    endTime,
+    description,
+    images,
+    monitorId,
+    incidentLocations,
+    followings,
+    isHighPriority,
+  ]);
+
   // Función para cargar los datos de un reporte
   const loadReportData = async (reportId: string) => {
     try {
@@ -132,12 +199,12 @@ useFocusEffect(
       setStartTime(report.incidentStartTime || "");
       setEndTime(report.incidentEndTime || "");
       setDescription(report.reportDetails || "");
-      setIsHighPriority(report.priority);
+      setIsHighPriority(report.priority === "ALTA");
       setImages(
         report.evidences?.map((e) => {
           const path = e.path || e.url || e.filePath || "";
           return path.startsWith("http") ? path : `${BUCKET_URL}${path}`;
-        }) || []
+        }) || [],
       );
       setIncidentLocations(report.incidentLocations || []);
       setFollowings(report.followings || []);
@@ -162,7 +229,7 @@ useFocusEffect(
           } else {
             console.log("Nuevo reporte");
             setIsEditMode(false);
-            resetForm();
+            // resetForm();
           }
         } catch (err) {
           console.error("Error al recargar datos:", err);
@@ -171,7 +238,7 @@ useFocusEffect(
         }
       };
       refreshData();
-    }, [id])
+    }, [id]),
   );
 
   // Enviar o actualizar reporte
@@ -187,8 +254,8 @@ useFocusEffect(
 
     if (missingFields.length > 0) {
       return Alert.alert(
-        "⚠️ Campos faltantes",
-        `Por favor completa los siguientes campos:\n\n• ${missingFields.join("\n• ")}`
+        "Campos faltantes",
+        `Por favor completa los siguientes campos:\n\n• ${missingFields.join("\n• ")}`,
       );
     }
 
@@ -215,6 +282,7 @@ useFocusEffect(
       };
 
       let result;
+
       if (isEditMode && id) {
         result = await ApiService.updateReport(id, payload);
       } else {
@@ -229,9 +297,10 @@ useFocusEffect(
         "✅ Éxito",
         isEditMode
           ? "Reporte actualizado correctamente."
-          : "Reporte enviado correctamente."
+          : "Reporte enviado correctamente.",
       );
 
+      await SecureStore.deleteItemAsync(REPORT_DRAFT_KEY);
       resetForm();
       setIsEditMode(false);
       router.replace("/");
@@ -243,7 +312,6 @@ useFocusEffect(
     }
   };
 
-
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center bg-white">
@@ -254,6 +322,24 @@ useFocusEffect(
       </View>
     );
   }
+
+  const clearFormCompletely = async () => {
+    Alert.alert(
+      "Limpiar formulario",
+      "Se borrará toda la información del reporte. ¿Deseas continuar?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Limpiar",
+          style: "destructive",
+          onPress: async () => {
+            resetForm();
+            await SecureStore.deleteItemAsync("NEW_REPORT_DRAFT");
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <ScrollView
@@ -277,16 +363,14 @@ useFocusEffect(
           <Header
             title={isEditMode ? "Editar Reporte" : "Crear Reporte"}
             onBack={() => {
-              //  resetForm()
               router.replace("/(drawer)");
-              //resetForm()
             }}
+            onClear={clearFormCompletely} // 👈 AQUÍ
             icon={isEditMode ? "pencil-outline" : "cloud-upload-outline"}
           />
-
           <ScrollView
             showsVerticalScrollIndicator={false}
-            className="px-4 py-6"
+            className="px-4 py-6 "
             contentContainerStyle={{ paddingBottom: 50 }}
           >
             <PropertyPicker
@@ -327,7 +411,6 @@ useFocusEffect(
                   color={isHighPriority ? "#fff" : "#C9A13B"}
                   style={{ marginRight: 6 }}
                 />
-
                 <Text
                   className={`text-sm font-semibold ${
                     isHighPriority ? "text-white" : "text-[#C9A13B]"
@@ -398,12 +481,12 @@ useFocusEffect(
 
                 try {
                   const evidence = currentReport.evidences?.find(
-                    (e) => `${BUCKET_URL}${e.url || e.path}` === url
+                    (e) => `${BUCKET_URL}${e.url || e.path}` === url,
                   );
                   if (!evidence) {
                     console.warn(
                       "No se encontró la evidencia correspondiente:",
-                      url
+                      url,
                     );
                     return;
                   }
@@ -411,12 +494,12 @@ useFocusEffect(
                   console.log("🗑️ Eliminando evidencia:", url);
                   await ApiService.deletePendingEvidence(
                     currentReport.id,
-                    evidence
+                    evidence,
                   );
                   await loadReportData(String(currentReport.id)); // ← vuelve a pedir los datos actualizados
                   // Refrescar datos locales
                   const updatedReport = await ApiService.getReportById(
-                    currentReport.id
+                    currentReport.id,
                   );
                   setCurrentReport(updatedReport);
                   setImages(
@@ -425,20 +508,19 @@ useFocusEffect(
                       return path.startsWith("http")
                         ? path
                         : `${BUCKET_URL}${path}`;
-                    }) || []
+                    }) || [],
                   );
 
                   // Mensaje visual de éxito
                   Alert.alert(
                     "✅ Evidencia eliminada",
-                    "La evidencia fue eliminada correctamente."
+                    "La evidencia fue eliminada correctamente.",
                   );
-          
                 } catch (err) {
                   console.error("Error eliminando evidencia:", err);
                   Alert.alert(
                     "Error",
-                    "No se pudo eliminar la evidencia del servidor."
+                    "No se pudo eliminar la evidencia del servidor.",
                   );
                 }
               }}

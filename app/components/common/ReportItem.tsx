@@ -3,6 +3,7 @@ import React from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
 const BUCKET_URL = process.env.EXPO_PUBLIC_BUCKET;
+const REPORT_DRAFT_KEY = "NEW_REPORT_DRAFT";
 
 type Props = {
   report: any;
@@ -11,23 +12,31 @@ type Props = {
 
 const stateStyles = {
   PENDING: { label: "Pendiente", color: "#C9A13B", icon: "clock-outline" },
-  IN_PROGRESS: { label: "En proceso", color: "#2196F3", icon: "progress-clock" },
-  COMPLETED: { label: "Terminado", color: "#4CAF50", icon: "check-circle-outline" },
+  IN_PROGRESS: {
+    label: "En proceso",
+    color: "#2196F3",
+    icon: "progress-clock",
+  },
+  COMPLETED: {
+    label: "Terminado",
+    color: "#4CAF50",
+    icon: "check-circle-outline",
+  },
 };
 
 export default function ReportItem({ report, onPress }: Props) {
-  const { 
-    caseType, 
-    property, 
-    madeBy, 
-    status, 
-    reportDetails, 
-    followings, 
-    evidences, 
-    incidentDate, 
-    contributedBy, 
-    priority, 
-    incidentLocations 
+  const {
+    caseType,
+    property,
+    madeBy,
+    status,
+    reportDetails,
+    followings,
+    evidences,
+    incidentDate,
+    contributedBy,
+    priority,
+    incidentLocations,
   } = report;
 
   const followingsCount = followings?.length || 0;
@@ -36,7 +45,8 @@ export default function ReportItem({ report, onPress }: Props) {
 
   /** 🔥 NORMALIZACIÓN Y FALLBACK SEGURO */
   const normalizedStatus = (status || "PENDING").trim().toUpperCase();
-  const { label, color, icon } = stateStyles[normalizedStatus] || stateStyles["PENDING"];
+  const { label, color, icon } =
+    stateStyles[normalizedStatus] || stateStyles["PENDING"];
 
   const avatarInitial = madeBy?.name ? madeBy.name[0].toUpperCase() : "?";
 
@@ -51,7 +61,11 @@ export default function ReportItem({ report, onPress }: Props) {
         <Text className="text-lg font-semibold text-gray-900 mr-2">
           {caseType?.translate || "Caso sin tipo"}{" "}
           {priority === "ALTA" && (
-            <MaterialCommunityIcons name="alert-circle" size={20} color="#D32F2F" />
+            <MaterialCommunityIcons
+              name="alert-circle"
+              size={20}
+              color="#D32F2F"
+            />
           )}
         </Text>
 
@@ -60,13 +74,17 @@ export default function ReportItem({ report, onPress }: Props) {
           style={{ backgroundColor: color + "20" }}
         >
           <MaterialCommunityIcons name={icon} size={16} color={color} />
-          <Text style={{ color, fontWeight: "600", marginLeft: 4 }}>{label}</Text>
+          <Text style={{ color, fontWeight: "600", marginLeft: 4 }}>
+            {label}
+          </Text>
         </View>
       </View>
 
       {/* PROPERTY & DATE */}
       <View className="flex-row items-center">
-        {property?.name && <Text className="text-gray-600 text-sm">{property.name}</Text>}
+        {property?.name && (
+          <Text className="text-gray-600 text-sm">{property.name}</Text>
+        )}
         {incidentDate && (
           <Text className="text-gray-400 text-xs ml-2">• {incidentDate}</Text>
         )}
@@ -94,7 +112,10 @@ export default function ReportItem({ report, onPress }: Props) {
               <Text className="text-[#6A5F3B] text-xs uppercase font-semibold tracking-wide">
                 Creado por
               </Text>
-              <Text className="text-gray-800 font-medium text-sm" numberOfLines={1}>
+              <Text
+                className="text-gray-800 font-medium text-sm"
+                numberOfLines={1}
+              >
                 {contributedBy?.name || "Sin responsable"}
               </Text>
             </View>
@@ -114,19 +135,26 @@ export default function ReportItem({ report, onPress }: Props) {
                 Atendido por
               </Text>
 
-              <Text className="text-gray-800 text-sm font-medium" numberOfLines={1}>
+              <Text
+                className="text-gray-800 text-sm font-medium"
+                numberOfLines={1}
+              >
                 {madeBy?.name || "No asignado"}
               </Text>
 
               {normalizedStatus === "IN_PROGRESS" && (
                 <View className="flex-row items-center gap-1">
                   <View className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
-                  <Text className="text-blue-500 text-xs font-medium">Trabajando...</Text>
+                  <Text className="text-blue-500 text-xs font-medium">
+                    Trabajando...
+                  </Text>
                 </View>
               )}
 
               {normalizedStatus === "COMPLETED" && (
-                <Text className="text-green-600 text-xs font-medium">Completado ✅</Text>
+                <Text className="text-green-600 text-xs font-medium">
+                  Completado ✅
+                </Text>
               )}
             </View>
           </View>
