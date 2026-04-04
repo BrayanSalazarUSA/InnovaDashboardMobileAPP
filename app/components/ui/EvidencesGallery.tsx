@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { Image, Modal, Pressable, Text, TouchableOpacity, View } from "react-native";
+import {
+  Image,
+  Modal,
+  Pressable,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 export default function EvidencesGallery({ report, BUCKET_URL }: any) {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -7,14 +14,12 @@ export default function EvidencesGallery({ report, BUCKET_URL }: any) {
   const [refreshKey, setRefreshKey] = useState(Date.now()); // 🔑 Fuerza recarga de imágenes
 
   useEffect(() => {
-
     if (report?.evidences?.length) {
       setEvidences(report.evidences);
       setRefreshKey(Date.now()); // 🔁 Refresca imágenes cada vez que cambia el reporte
     } else {
       setEvidences([]);
     }
-
     return () => {
       setSelectedImage(null);
       setEvidences([]);

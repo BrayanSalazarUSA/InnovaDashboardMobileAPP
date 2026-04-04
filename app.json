@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Dashboard APP",
+    "name": "Innova Monitoring App",
     "slug": "pending-reports-mobile",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/logo-innova.png",
     "scheme": "pendingreportsmobile",
@@ -29,6 +29,13 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "La app necesita acceso a tus fotos para adjuntar evidencias.",
+          "cameraPermission": "La app necesita usar la camara para tomar la selfie de inicio de turno."
+        }
+      ],
       [
         "expo-splash-screen",
         {

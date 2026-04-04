@@ -146,7 +146,10 @@ export default function CameraFollowingsForm({
               )}
 
               <View className="flex-row justify-end items-center mt-1">
-                <TouchableOpacity onPress={() => openEdit(i)} activeOpacity={0.8}>
+                <TouchableOpacity
+                  onPress={() => openEdit(i)}
+                  activeOpacity={0.8}
+                >
                   <MaterialCommunityIcons
                     name="pencil-outline"
                     size={18}
@@ -154,7 +157,10 @@ export default function CameraFollowingsForm({
                     style={{ marginRight: 10 }}
                   />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => removeFollowing(i)} activeOpacity={0.8}>
+                <TouchableOpacity
+                  onPress={() => removeFollowing(i)}
+                  activeOpacity={0.8}
+                >
                   <MaterialCommunityIcons
                     name="trash-can-outline"
                     size={18}
@@ -172,7 +178,11 @@ export default function CameraFollowingsForm({
         className="flex-row items-center justify-center border border-[#D4B15F] rounded-xl bg-[#FFFBE6] py-2.5 mt-1"
         activeOpacity={0.85}
       >
-        <MaterialCommunityIcons name="plus-circle-outline" size={20} color="#A67C00" />
+        <MaterialCommunityIcons
+          name="plus-circle-outline"
+          size={20}
+          color="#A67C00"
+        />
         <Text className="text-[#A67C00] font-semibold ml-1 text-sm">
           Agregar seguimiento
         </Text>
@@ -186,7 +196,9 @@ export default function CameraFollowingsForm({
               <View className="bg-white rounded-2xl p-5 shadow-md">
                 <ScrollView showsVerticalScrollIndicator={false}>
                   <Text className="text-[#A67C00] font-semibold text-lg mb-3 flex-row items-center">
-                    {temp.index !== undefined ? "Editar seguimiento" : "Nuevo seguimiento"}
+                    {temp.index !== undefined
+                      ? "Editar seguimiento"
+                      : "Nuevo seguimiento"}
                   </Text>
 
                   {/* Cámara */}
@@ -240,7 +252,11 @@ export default function CameraFollowingsForm({
                           {temp.time || "Seleccionar hora"}
                         </Text>
                       </View>
-                      <MaterialCommunityIcons name="chevron-down" size={22} color="#A67C00" />
+                      <MaterialCommunityIcons
+                        name="chevron-down"
+                        size={22}
+                        color="#A67C00"
+                      />
                     </TouchableOpacity>
 
                     <DateTimePickerModal
@@ -265,7 +281,9 @@ export default function CameraFollowingsForm({
                         color="#A67C00"
                         style={{ marginRight: 6 }}
                       />
-                      <Text className="text-[#A67C00] font-medium">Descripción</Text>
+                      <Text className="text-[#A67C00] font-medium">
+                        Descripción
+                      </Text>
                     </View>
                     <TextInput
                       value={temp.description || ""}
@@ -286,7 +304,9 @@ export default function CameraFollowingsForm({
                         color="#A67C00"
                         style={{ marginRight: 6 }}
                       />
-                      <Text className="text-[#A67C00] font-medium">Tipo de hora</Text>
+                      <Text className="text-[#A67C00] font-medium">
+                        Tipo de hora
+                      </Text>
                     </View>
                     <TouchableOpacity
                       onPress={() => setShowCategoryMenu(!showCategoryMenu)}
@@ -357,7 +377,9 @@ export default function CameraFollowingsForm({
                       onPress={() => setShowModal(false)}
                       className="px-4 py-2 rounded-lg border border-gray-300 mr-2"
                     >
-                      <Text className="text-gray-600 font-medium">Cancelar</Text>
+                      <Text className="text-gray-600 font-medium">
+                        Cancelar
+                      </Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity

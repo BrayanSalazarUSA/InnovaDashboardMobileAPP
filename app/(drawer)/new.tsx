@@ -1,6 +1,8 @@
+import { DraftService } from "@/services/DraftService";
+import { LocalDraftReport } from "@/types/LocalDraftReport";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import * as Crypto from "expo-crypto";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import * as SecureStore from "expo-secure-store";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -13,6 +15,7 @@ import {
 } from "react-native";
 import { ApiService } from "../../services/api";
 import Header from "../components/common/Header";
+import { recordDiagnostic } from "../_lib/diagnostics";
 import CameraFollowingsForm from "../components/ui/CamerasFollowingForm";
 import ImageUploader from "../components/ui/ImageUploader";
 import IncidentLocationsSelector from "../components/ui/IncidentLocationsSelector";
@@ -21,38 +24,55 @@ import MonitorPicker from "../components/ui/MonitorPicker";
 import PropertyPicker from "../components/ui/PropertyPicker";
 import TextAreaInput from "../components/ui/TextAreaInput";
 import TimePickerInput from "../components/ui/TimePickerInput";
-
 const BUCKET_URL = process.env.EXPO_PUBLIC_BUCKET;
-const REPORT_DRAFT_KEY = "NEW_REPORT_DRAFT";
+
+export type ReportImage = {
+  uri: string;
+  isRemote: boolean; // 👈 clave
+};
 
 export default function NewReport() {
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  const { id, draftId } = useLocalSearchParams<{
+    id?: string;
+    draftId?: string;
+  }>();
 
+  /* =========================
+     MODOS
+  ========================== */
   const [isEditMode, setIsEditMode] = useState(false);
+  const [isDraftMode, setIsDraftMode] = useState(false);
+  const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
+
+  /* =========================
+     ESTADOS
+  ========================== */
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  // Campos del formulario
   const [propertyId, setPropertyId] = useState("");
   const [incidentId, setIncidentId] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [description, setDescription] = useState("");
-  const [images, setImages] = useState<string[]>([]);
   const [monitorId, setMonitorId] = useState("");
   const [incidentLocations, setIncidentLocations] = useState<any[]>([]);
-  const [followings, setFollowings] = useState([]); // vacío al inicio
+  const [followings, setFollowings] = useState<any[]>([]);
   const [isHighPriority, setIsHighPriority] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [properties, setProperties] = useState<any[]>([]);
+  const [buildings, setBuildings] = useState<any[]>([]);
+  const [monitors, setMonitors] = useState<any[]>([]);
+  const [incidents, setIncidents] = useState<any[]>([]);
 
-  // Listas base
-  const [properties, setProperties] = useState([]);
-  const [buildings, setBuildings] = useState([]);
-  const [monitors, setMonitors] = useState([]);
-  const [incidents, setIncidents] = useState([]);
-  const [currentReport, setCurrentReport] = useState<any>(null);
+  const [images, setImages] = useState<ReportImage[]>([]);
 
-  //  Reiniciar formulario
+  const scrollRef = useRef<ScrollView>(null);
+
+  /* =========================
+     RESET
+  ========================== */
   const resetForm = () => {
     setPropertyId("");
     setIncidentId("");
@@ -61,293 +81,344 @@ export default function NewReport() {
     setDescription("");
     setImages([]);
     setMonitorId("");
-    setIsHighPriority(false);
     setIncidentLocations([]);
     setFollowings([]);
+    setIsHighPriority(false);
   };
 
-  const saveDraft = async () => {
-    try {
-      const draft = {
+  useEffect(() => {
+    // 🚫 NUNCA crear drafts en modo edición
+    if (isEditMode) return;
+
+    // ❌ Nada que guardar
+    if (!hasMeaningfulChanges()) return;
+
+    // 🟢 Primer cambio → crear draft
+    if (!currentDraftId) {
+      const newDraftId = Crypto.randomUUID();
+      setIsDraftMode(true);
+      setCurrentDraftId(newDraftId);
+      return;
+    }
+
+    // 🟡 Guardar draft existente
+    const save = async () => {
+      const selectedProperty = properties.find((p) => p.id === propertyId);
+      const selectedIncident = incidents.find((i) => i.id === incidentId);
+      const selectedMonitor = monitors.find((m) => m.id === monitorId);
+
+      const draft: LocalDraftReport = {
+        localId: currentDraftId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+
         propertyId,
         incidentId,
+        monitorId,
+
+        propertyName: selectedProperty?.name || "",
+        incidentLabel:
+          selectedIncident?.translate || selectedIncident?.incident || "",
+        monitorName: selectedMonitor?.name || "",
+
         startTime,
         endTime,
         description,
         images,
-        monitorId,
         incidentLocations,
         followings,
         isHighPriority,
+
+        status: "draft",
       };
 
-      await SecureStore.setItemAsync(REPORT_DRAFT_KEY, JSON.stringify(draft));
-    } catch (err) {
-      console.warn("No se pudo guardar el borrador:", err);
-    }
-  };
-
-  // Forzar remount del formulario si cambia ID
-  const [key, setKey] = useState(0);
-  useEffect(() => {
-    setKey((prev) => prev + 1);
-  }, [id]);
-
-  const scrollRef = useRef<ScrollView>(null);
-
-  useEffect(() => {
-    const loadDraft = async () => {
-      try {
-        if (id) return; // ❌ si es edición, NO cargar draft
-
-        const saved = await SecureStore.getItemAsync(REPORT_DRAFT_KEY);
-        if (!saved) return;
-
-        const draft = JSON.parse(saved);
-
-        setPropertyId(draft.propertyId || "");
-        setIncidentId(draft.incidentId || "");
-        setStartTime(draft.startTime || "");
-        setEndTime(draft.endTime || "");
-        setDescription(draft.description || "");
-        setImages(draft.images || []);
-        setMonitorId(draft.monitorId || "");
-        setIncidentLocations(draft.incidentLocations || []);
-        setFollowings(draft.followings || []);
-        setIsHighPriority(draft.isHighPriority || false);
-      } catch (err) {
-        console.warn("No se pudo restaurar el borrador:", err);
-      }
+      await DraftService.save(draft);
     };
 
-    loadDraft();
-  }, []);
-
-  // Mover scroll al inicio cada vez que la pantalla se enfoque
-  useFocusEffect(
-    useCallback(() => {
-      scrollRef.current?.scrollTo({ y: 0, animated: false });
-    }, []),
-  );
-
-  // Cargar catálogos base
-  useFocusEffect(
-    useCallback(() => {
-      const loadInitialData = async () => {
-        try {
-          const [props, mons, incs] = await Promise.all([
-            ApiService.getProperties(),
-            ApiService.getMonitors(),
-            ApiService.getIncidents(),
-          ]);
-
-          setProperties(props || []);
-          setMonitors(mons || []);
-          setIncidents(incs || []);
-        } catch (err) {
-          console.error("Error cargando catálogos:", err);
-        }
-      };
-
-      loadInitialData();
-    }, []),
-  );
-
-  // Cargar edificios según propiedad seleccionada
-  useEffect(() => {
-    if (!propertyId) return setBuildings([]);
-    const loadBuildings = async () => {
-      try {
-        const result = await ApiService.getBuildings(propertyId);
-        setBuildings(Array.isArray(result) ? result : []);
-      } catch (err) {
-        console.error("Error cargando edificios:", err);
-        setBuildings([]);
-      }
-    };
-    loadBuildings();
-  }, [propertyId]);
-
-  //Guardar AUTOMÁTICAMENTE cuando el usuario escribe
-  useEffect(() => {
-    if (isEditMode) return; // ❌ NO guardar borrador en edición
-    saveDraft();
+    save();
   }, [
+    isEditMode, // 👈 IMPORTANTE
     propertyId,
     incidentId,
     startTime,
     endTime,
     description,
     images,
-    monitorId,
     incidentLocations,
     followings,
     isHighPriority,
+    currentDraftId,
   ]);
 
-  // Función para cargar los datos de un reporte
-  const loadReportData = async (reportId: string) => {
-    try {
-      setLoading(true);
-      const report = await ApiService.getReportById(reportId);
-      if (!report) throw new Error("No se pudo obtener el reporte.");
-
-      setCurrentReport(report);
-      setPropertyId(report.property?.id || "");
-      setIncidentId(report.caseType?.id || "");
-      setMonitorId(report.contributedBy?.id || "");
-      setStartTime(report.incidentStartTime || "");
-      setEndTime(report.incidentEndTime || "");
-      setDescription(report.reportDetails || "");
-      setIsHighPriority(report.priority === "ALTA");
-      setImages(
-        report.evidences?.map((e) => {
-          const path = e.path || e.url || e.filePath || "";
-          return path.startsWith("http") ? path : `${BUCKET_URL}${path}`;
-        }) || [],
-      );
-      setIncidentLocations(report.incidentLocations || []);
-      setFollowings(report.followings || []);
-    } catch (err) {
-      console.error("Error cargando reporte:", err);
-      Alert.alert("Error", "No se pudo cargar el reporte.");
-    } finally {
-      setLoading(false);
-    }
+  const hasMeaningfulChanges = () => {
+    return (
+      propertyId !== "" ||
+      incidentId !== "" ||
+      startTime !== "" ||
+      endTime !== "" ||
+      description.trim().length > 0 ||
+      images.length > 0 ||
+      incidentLocations.length > 0 ||
+      followings.length > 0 ||
+      isHighPriority === true
+    );
   };
 
-  // Validar si es edición o nuevo reporte
+  /* =========================
+     CARGA INICIAL (3 MODOS)
+  ========================== */
   useFocusEffect(
     useCallback(() => {
-      const refreshData = async () => {
+      const init = async () => {
         try {
           setLoading(true);
+
+          // 🔵 EDICIÓN DESDE BACKEND
           if (id) {
-            console.log("Editando reporte:", id);
             setIsEditMode(true);
-            await loadReportData(String(id));
-          } else {
-            console.log("Nuevo reporte");
-            setIsEditMode(false);
-            // resetForm();
+            setIsDraftMode(false);
+            setCurrentDraftId(null);
+
+            await loadBackendReport(id);
+            return;
           }
-        } catch (err) {
-          console.error("Error al recargar datos:", err);
+
+          // 🟡 CONTINUAR DRAFT EXISTENTE
+          if (draftId) {
+            const draft = await DraftService.getById(draftId);
+
+            if (draft) {
+              setIsEditMode(false);
+              setIsDraftMode(true);
+              setCurrentDraftId(draft.localId);
+
+              hydrateFromDraft(draft);
+            }
+
+            return;
+          }
+
+          // 🟢 NUEVO REPORTE (VACÍO, SIN DRAFT AÚN)
+          setIsEditMode(false);
+          setIsDraftMode(false);
+          setCurrentDraftId(null);
+
+          resetForm();
+        } catch (error) {
+          console.error("Error inicializando formulario:", error);
         } finally {
           setLoading(false);
         }
       };
-      refreshData();
-    }, [id]),
+
+      init();
+    }, [id, draftId]),
   );
 
-  // Enviar o actualizar reporte
+  /* =========================
+     AUTOGUARDADO DRAFT
+===================
+     CATÁLOGOS
+  ========================== */
+  useFocusEffect(
+    useCallback(() => {
+      const loadCatalogs = async () => {
+        const results = await Promise.allSettled([
+          ApiService.getProperties(),
+          ApiService.getMonitors(),
+          ApiService.getIncidents(),
+        ]);
+
+        const [propsResult, monitorsResult, incidentsResult] = results;
+        const failedCatalogs: string[] = [];
+
+        if (propsResult.status === "fulfilled") {
+          setProperties(propsResult.value || []);
+        } else {
+          setProperties([]);
+          failedCatalogs.push("propiedades");
+          recordDiagnostic({
+            source: "newReport.loadCatalogs.properties",
+            message: "No se pudo cargar el catalogo de propiedades.",
+            error: propsResult.reason,
+          });
+        }
+
+        if (monitorsResult.status === "fulfilled") {
+          setMonitors(monitorsResult.value || []);
+        } else {
+          setMonitors([]);
+          failedCatalogs.push("monitores");
+          recordDiagnostic({
+            source: "newReport.loadCatalogs.monitors",
+            message: "No se pudo cargar el catalogo de monitores.",
+            error: monitorsResult.reason,
+          });
+        }
+
+        if (incidentsResult.status === "fulfilled") {
+          setIncidents(incidentsResult.value || []);
+        } else {
+          setIncidents([]);
+          failedCatalogs.push("tipos de incidente");
+          recordDiagnostic({
+            source: "newReport.loadCatalogs.incidents",
+            message: "No se pudo cargar el catalogo de incidentes.",
+            error: incidentsResult.reason,
+          });
+        }
+
+        if (failedCatalogs.length > 0) {
+          Alert.alert(
+            "Conexion inestable",
+            `No se pudieron cargar: ${failedCatalogs.join(", ")}. Puedes intentar de nuevo entrando otra vez a esta pantalla.`,
+          );
+        }
+      };
+      void loadCatalogs();
+    }, []),
+  );
+
+  /* =========================
+     LOADERS
+  ========================== */
+  const hydrateFromDraft = (draft: LocalDraftReport) => {
+    setPropertyId(draft.propertyId || "");
+    setIncidentId(draft.incidentId || "");
+    setMonitorId(draft.monitorId || "");
+
+    setStartTime(draft.startTime || "");
+    setEndTime(draft.endTime || "");
+    setDescription(draft.description || "");
+    setImages(draft.images || []);
+    setIncidentLocations(draft.incidentLocations || []);
+    setFollowings(draft.followings || []);
+    setIsHighPriority(draft.isHighPriority || false);
+  };
+
+  const loadBackendReport = async (reportId: string) => {
+    const report = await ApiService.getReportById(reportId);
+
+    setPropertyId(report.property?.id || "");
+    setIncidentId(report.caseType?.id || "");
+    setMonitorId(report.contributedBy?.id || "");
+    setStartTime(report.incidentStartTime || "");
+    setEndTime(report.incidentEndTime || "");
+    setDescription(report.reportDetails || "");
+    setIsHighPriority(report.priority === "ALTA");
+    setImages(
+      report.evidences
+        ?.filter((e) => e.path || e.url)
+        .map((e) => {
+          const path = e.url || e.path;
+          return {
+            uri: path.startsWith("http") ? path : `${BUCKET_URL}${path}`,
+            isRemote: true,
+          };
+        }) || [],
+    );
+    setIncidentLocations(report.incidentLocations || []);
+    setFollowings(report.followings || []);
+  };
+
+  /* =========================
+     SUBMIT
+  ========================== */
   const handleSubmit = async () => {
-    const missingFields: string[] = [];
-
-    if (!propertyId) missingFields.push("Propiedad");
-    if (!monitorId) missingFields.push("Monitor responsable");
-    if (!incidentId) missingFields.push("Tipo de incidente");
-    if (!description) missingFields.push("Descripción");
-    if (!startTime) missingFields.push("Hora de inicio");
-    if (!endTime) missingFields.push("Hora de fin");
-
-    if (missingFields.length > 0) {
-      return Alert.alert(
-        "Campos faltantes",
-        `Por favor completa los siguientes campos:\n\n• ${missingFields.join("\n• ")}`,
-      );
-    }
-
     try {
       setSubmitting(true);
 
-      const selectedProperty = properties.find((p) => p?.id === propertyId);
-      const payload = {
-        property: selectedProperty,
-        contributedBy: { id: monitorId },
-        caseType: incidents.find((inc) => inc.id === incidentId),
-        incidentDate: new Date().toISOString().split("T")[0],
-        incidentStartTime: startTime,
-        incidentEndTime: endTime,
-        reportDetails: description,
-        followings,
-        priority: isHighPriority && "ALTA",
-        incidentLocations,
-        evidences: images.map((uri, i) => ({
-          uri,
-          type: "image/jpeg",
-          name: `evidence_${i}.jpg`,
-        })),
-      };
+      // 🟢 Imágenes nuevas (locales)
+      const newImages = images.filter((img) => !img.isRemote);
 
-      let result;
+      // ==========================
+      // 🟢 CREAR REPORTE NUEVO
+      // ==========================
+      if (!isEditMode) {
+        const payload = {
+          property: properties.find((p) => p.id === propertyId),
+          contributedBy: { id: monitorId },
+          caseType: incidents.find((i) => i.id === incidentId),
+          incidentStartTime: startTime,
+          incidentEndTime: endTime,
+          reportDetails: description,
+          followings,
+          priority: isHighPriority && "ALTA",
+          incidentLocations,
 
+          // 🔥 AQUÍ ESTABA EL PROBLEMA
+          evidences: newImages.map((img, i) => ({
+            uri: img.uri,
+            type: "image/jpeg",
+            name: `evidence_${i}.jpg`,
+          })),
+        };
+
+        await ApiService.createReport(payload);
+      }
+
+      // ==========================
+      // ✏️ EDITAR REPORTE EXISTENTE
+      // ==========================
       if (isEditMode && id) {
-        result = await ApiService.updateReport(id, payload);
-      } else {
-        result = await ApiService.createReport(payload);
+        // 1️⃣ Actualizar datos del reporte
+        await ApiService.updateReport(id, {
+          property: properties.find((p) => p.id === propertyId),
+          contributedBy: { id: monitorId },
+          caseType: incidents.find((i) => i.id === incidentId),
+          incidentStartTime: startTime,
+          incidentEndTime: endTime,
+          reportDetails: description,
+          followings,
+          priority: isHighPriority && "ALTA",
+          incidentLocations,
+        });
+
+        // 2️⃣ Subir SOLO imágenes nuevas
+        if (newImages.length > 0) {
+          await ApiService.addPendingEvidences(
+            id,
+            newImages.map((img, i) => ({
+              uri: img.uri,
+              type: "image/jpeg",
+              name: `evidence_${i}.jpg`,
+            })),
+            monitorId,
+          );
+        }
       }
 
-      if (!result || result.status >= 400) {
-        throw new Error("Error al enviar reporte");
+      // 🧹 Limpiar draft
+      if (currentDraftId) {
+        await DraftService.delete(currentDraftId);
       }
 
-      Alert.alert(
-        "✅ Éxito",
-        isEditMode
-          ? "Reporte actualizado correctamente."
-          : "Reporte enviado correctamente.",
-      );
-
-      await SecureStore.deleteItemAsync(REPORT_DRAFT_KEY);
       resetForm();
-      setIsEditMode(false);
-      router.replace("/");
-    } catch (err: any) {
-      console.error("Error enviando reporte:", err);
-      Alert.alert("❌ Error", err.message || "No se pudo enviar el reporte.");
+      router.replace("/(drawer)");
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "No se pudo enviar el reporte");
     } finally {
       setSubmitting(false);
     }
   };
 
+  /* =========================
+     UI
+  ========================== */
   if (loading) {
     return (
-      <View className="flex-1 items-center justify-center bg-white">
+      <View className="flex-1 items-center justify-center">
         <ActivityIndicator size="large" color="#C9A13B" />
-        <Text className="mt-3 text-[#C9A13B] font-semibold">
-          Cargando datos...
-        </Text>
       </View>
     );
   }
-
-  const clearFormCompletely = async () => {
-    Alert.alert(
-      "Limpiar formulario",
-      "Se borrará toda la información del reporte. ¿Deseas continuar?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        {
-          text: "Limpiar",
-          style: "destructive",
-          onPress: async () => {
-            resetForm();
-            await SecureStore.deleteItemAsync("NEW_REPORT_DRAFT");
-          },
-        },
-      ],
-    );
-  };
-
   return (
     <ScrollView
       ref={scrollRef}
       contentContainerStyle={{ paddingBottom: 0 }}
       className="px-3"
     >
-      <View key={id || "new"} className="flex-1 bg-gray-50">
+      <View className="flex-1 bg-gray-50">
         <ImageBackground
           source={require("../../assets/images/gray-background.png")}
           style={{ width: "100%", height: "100%", flex: 1 }}
@@ -361,18 +432,24 @@ export default function NewReport() {
           }}
         >
           <Header
-            title={isEditMode ? "Editar Reporte" : "Crear Reporte"}
-            onBack={() => {
-              router.replace("/(drawer)");
-            }}
-            onClear={clearFormCompletely} // 👈 AQUÍ
-            icon={isEditMode ? "pencil-outline" : "cloud-upload-outline"}
+            title={
+              isEditMode
+                ? "Editar Reporte"
+                : isDraftMode
+                  ? "Continuar Reporte"
+                  : "Crear Reporte"
+            }
+            onBack={() => router.replace("/(drawer)")}
           />
+
           <ScrollView
             showsVerticalScrollIndicator={false}
-            className="px-4 py-6 "
-            contentContainerStyle={{ paddingBottom: 50 }}
+            className="px-4 py-6"
+            contentContainerStyle={{ paddingBottom: 60 }}
           >
+            {/* ========================
+              PROPERTY
+          ======================== */}
             <PropertyPicker
               label="Property"
               properties={properties}
@@ -380,6 +457,9 @@ export default function NewReport() {
               onSelect={setPropertyId}
             />
 
+            {/* ========================
+              MONITOR
+          ======================== */}
             <MonitorPicker
               label="Monitor"
               monitors={monitors}
@@ -387,6 +467,9 @@ export default function NewReport() {
               onSelect={setMonitorId}
             />
 
+            {/* ========================
+              INCIDENT
+          ======================== */}
             <IncidentPicker
               label="Incident Type"
               incidents={incidents}
@@ -394,6 +477,9 @@ export default function NewReport() {
               onSelect={setIncidentId}
             />
 
+            {/* ========================
+              PRIORIDAD
+          ======================== */}
             <View className="mt-2 items-start">
               <TouchableOpacity
                 onPress={() => setIsHighPriority(!isHighPriority)}
@@ -421,6 +507,9 @@ export default function NewReport() {
               </TouchableOpacity>
             </View>
 
+            {/* ========================
+              HORAS
+          ======================== */}
             <View className="mt-4 flex-row gap-3">
               <View className="flex-1">
                 <TimePickerInput
@@ -437,6 +526,7 @@ export default function NewReport() {
                   }
                 />
               </View>
+
               <View className="flex-1">
                 <TimePickerInput
                   label="Hora de fin"
@@ -453,10 +543,18 @@ export default function NewReport() {
                 />
               </View>
             </View>
+
+            {/* ========================
+              FOLLOWINGS
+          ======================== */}
             <CameraFollowingsForm
               followings={followings}
               setFollowings={setFollowings}
             />
+
+            {/* ========================
+              DESCRIPCIÓN
+          ======================== */}
             <TextAreaInput
               label="Descripción"
               value={description}
@@ -471,73 +569,41 @@ export default function NewReport() {
               }
             />
 
+            {/* ========================
+              IMÁGENES
+          ======================== */}
+
             <ImageUploader
-              label="Evidencias (Imágenes)"
+              key={images.map((i) => i.uri).join("|")}
+              label="Evidencias"
               images={images}
               setImages={setImages}
+              maxImages={10}
               onRemoveRemoteImage={async (url) => {
-                if (!url || typeof url !== "string") return;
-                if (!currentReport || !currentReport.id) return;
-
-                try {
-                  const evidence = currentReport.evidences?.find(
-                    (e) => `${BUCKET_URL}${e.url || e.path}` === url,
-                  );
-                  if (!evidence) {
-                    console.warn(
-                      "No se encontró la evidencia correspondiente:",
-                      url,
-                    );
-                    return;
-                  }
-
-                  console.log("🗑️ Eliminando evidencia:", url);
-                  await ApiService.deletePendingEvidence(
-                    currentReport.id,
-                    evidence,
-                  );
-                  await loadReportData(String(currentReport.id)); // ← vuelve a pedir los datos actualizados
-                  // Refrescar datos locales
-                  const updatedReport = await ApiService.getReportById(
-                    currentReport.id,
-                  );
-                  setCurrentReport(updatedReport);
-                  setImages(
-                    updatedReport.evidences?.map((e) => {
-                      const path = e.path || e.url || "";
-                      return path.startsWith("http")
-                        ? path
-                        : `${BUCKET_URL}${path}`;
-                    }) || [],
-                  );
-
-                  // Mensaje visual de éxito
-                  Alert.alert(
-                    "✅ Evidencia eliminada",
-                    "La evidencia fue eliminada correctamente.",
-                  );
-                } catch (err) {
-                  console.error("Error eliminando evidencia:", err);
-                  Alert.alert(
-                    "Error",
-                    "No se pudo eliminar la evidencia del servidor.",
-                  );
-                }
+                await ApiService.deletePendingEvidence(id!, {
+                  path: url.replace(BUCKET_URL, ""),
+                });
               }}
             />
+            {/* ========================
+              UBICACIONES
+          ======================== */}
             {!isEditMode && (
               <IncidentLocationsSelector
                 property={properties.find((p) => p.id === propertyId)}
-                buildings={buildings} // lista de edificios
+                buildings={buildings}
                 onLocationsChange={setIncidentLocations}
               />
             )}
 
+            {/* ========================
+              SUBMIT
+          ======================== */}
             <TouchableOpacity
               disabled={submitting}
               onPress={handleSubmit}
               activeOpacity={0.9}
-              className={`flex-row rounded-2xl py-4  justify-center items-center shadow-lg ${
+              className={`flex-row rounded-2xl py-4 justify-center items-center shadow-lg ${
                 submitting ? "bg-[#006bb3]/60" : "bg-[#006bb3]"
               }`}
             >
@@ -549,7 +615,7 @@ export default function NewReport() {
                     name={isEditMode ? "save-outline" : "send"}
                     size={20}
                     color="white"
-                    className="mr-2"
+                    style={{ marginRight: 8 }}
                   />
                   <Text className="text-white font-semibold text-base">
                     {isEditMode ? "Guardar Cambios" : "Enviar Reporte"}

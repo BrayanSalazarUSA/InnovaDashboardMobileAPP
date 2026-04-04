@@ -1,6 +1,7 @@
+import { ReportImage } from "@/app/(drawer)/new";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import React, { useState } from "react";
+import React, { useEffect } from "react";
 import {
   Alert,
   Dimensions,
@@ -11,8 +12,8 @@ import {
 } from "react-native";
 
 type Props = {
-  images: string[];
-  setImages: React.Dispatch<React.SetStateAction<string[]>>;
+  images: ReportImage[];
+  setImages: React.Dispatch<React.SetStateAction<ReportImage[]>>;
   label?: string;
   onRemoveRemoteImage?: (url: string) => Promise<void>;
   maxImages?: number;
@@ -27,52 +28,82 @@ export default function ImageUploader({
   onRemoveRemoteImage,
   maxImages = 10,
 }: Props) {
-  const [refreshKey, setRefreshKey] = useState(Date.now()); // 🔁 fuerza actualización visual
+  /* =========================
+     🔍 LOGS DE RENDER
+  ========================== */
+  useEffect(() => {
+    console.log("🧩 [ImageUploader] render");
+    console.log("🧩 Total imágenes:", images.length);
 
+    images.forEach((img, i) => {
+      console.log(
+        `🧩 Image[${i}]`,
+        img.isRemote ? "[REMOTE]" : "[LOCAL]",
+        img.uri,
+      );
+    });
+  }, [images]);
+
+  /* =========================
+     📸 PICK IMAGE
+  ========================== */
   const pickImage = async () => {
-    try {
-      const { status } =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permiso requerido",
-          "Debes permitir el acceso a tus fotos.",
-        );
-        return;
-      }
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        quality: 0.8,
-        allowsMultipleSelection: true,
-        selectionLimit: maxImages - images.length,
+    if (status !== "granted") {
+      Alert.alert("Permiso requerido");
+      return;
+    }
+
+    // ✅ AQUÍ FALTABA ESTO
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"], // ✅ CORRECTO
+      allowsMultipleSelection: true,
+      selectionLimit: maxImages - images.length,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      const newImages: ReportImage[] = result.assets.map((a) => {
+        console.log("📸 Imagen local seleccionada:", a.uri);
+        return {
+          uri: a.uri,
+          isRemote: false,
+        };
       });
 
-      if (!result.canceled && result.assets?.length > 0) {
-        const uris = result.assets.map((a) => a.uri);
-        setImages((prev) => [...prev, ...uris]);
-        setRefreshKey(Date.now()); // 🔁 fuerza recarga
-      }
-    } catch (error) {
-      console.error("Error al seleccionar imagen:", error);
-      Alert.alert("Error", "No se pudo seleccionar la imagen.");
+      setImages((prev) => [...prev, ...newImages]);
     }
   };
-
+  /* =========================
+     ❌ REMOVE IMAGE
+  ========================== */
   const removeImage = async (index: number) => {
-    const imgToRemove = images[index];
-    setImages((prev) => prev.filter((_, i) => i !== index));
-    setRefreshKey(Date.now()); // 🔁 recarga tras eliminar
+    const img = images[index];
 
-    if (onRemoveRemoteImage && imgToRemove.startsWith("http")) {
+    console.log("❌ [ImageUploader] removeImage");
+    console.log("❌ Index:", index);
+    console.log("❌ Imagen:", img);
+
+    // UX inmediata
+    setImages((prev) => prev.filter((_, i) => i !== index));
+
+    // Backend si es remota
+    if (img.isRemote && onRemoveRemoteImage) {
+      console.log("❌ Eliminando imagen remota en backend:", img.uri);
       try {
-        await onRemoveRemoteImage(imgToRemove);
-      } catch (error) {
-        console.error("Error al eliminar imagen remota:", error);
+        await onRemoveRemoteImage(img.uri);
+        console.log("✅ Imagen eliminada en backend");
+      } catch (e) {
+        console.error("❌ Error eliminando imagen remota", e);
+        Alert.alert("Error", "No se pudo eliminar la imagen del servidor");
       }
     }
   };
 
+  /* =========================
+     UI
+  ========================== */
   return (
     <View className="mb-6">
       {label && (
@@ -81,75 +112,59 @@ export default function ImageUploader({
         </Text>
       )}
 
-      {/* Botón principal */}
+      {/* BOTÓN AGREGAR */}
       <TouchableOpacity
         onPress={pickImage}
-        activeOpacity={0.85}
-        className={`border-2 border-dashed border-[#C9A13B] rounded-2xl bg-[#fffbe6] p-6 flex flex-col items-center justify-center ${
-          images.length >= maxImages ? "opacity-60" : ""
-        }`}
         disabled={images.length >= maxImages}
-        style={{
-          shadowColor: "#000",
-          shadowOpacity: 0.08,
-          shadowRadius: 6,
-        }}
+        className="border-2 border-dashed border-[#C9A13B] rounded-2xl bg-[#fffbe6] p-6 items-center"
       >
         <MaterialCommunityIcons
           name="camera-plus-outline"
           size={32}
           color="#A67C00"
         />
-        <Text className="text-[#A67C00] font-semibold mt-2 text-base">
+        <Text className="text-[#A67C00] font-semibold mt-2">
           {images.length >= maxImages
             ? "Límite alcanzado"
-            : "Seleccionar Imágenes"}
-        </Text>
-        <Text className="text-gray-500 text-sm mt-1">
-          {images.length > 0
-            ? `${images.length} ${
-                images.length === 1
-                  ? "imagen seleccionada"
-                  : "imágenes seleccionadas"
-              }`
-            : `Puedes subir hasta ${maxImages} imágenes`}
+            : "Seleccionar imágenes"}
         </Text>
       </TouchableOpacity>
 
-      {/* Galería de imágenes */}
+      {/* GALERÍA */}
       {images.length > 0 && (
         <View className="flex flex-wrap flex-row justify-between mt-5">
-          {images.map((uri, i) => {
-            const cacheBypassUri = uri.startsWith("http")
-              ? `${uri}?v=${refreshKey}`
-              : uri;
+          {images.map((img, i) => {
+            const displayUri = img.isRemote
+              ? img.uri + "?v=" + Date.now() // cache-bypass
+              : img.uri;
+
+            console.log(
+              "🖼️ [ImageUploader] Render image",
+              i,
+              img.isRemote ? "[REMOTE]" : "[LOCAL]",
+              displayUri,
+            );
 
             return (
               <View
-                key={`${cacheBypassUri}-${i}`}
+                key={`${displayUri}-${i}`}
                 style={{
                   width: (screenWidth - 60) / 2,
                   aspectRatio: 1,
                   borderRadius: 16,
                   marginBottom: 12,
-                  position: "relative",
-                  backgroundColor: "#f8f8f8",
                   overflow: "hidden",
-                  shadowColor: "#000",
-                  shadowOpacity: 0.08,
-                  shadowRadius: 4,
                 }}
               >
                 <Image
-                  source={{ uri: cacheBypassUri }}
+                  source={{ uri: displayUri }}
                   style={{ width: "100%", height: "100%" }}
                   resizeMode="cover"
                 />
 
-                {/* Botón eliminar */}
+                {/* BOTÓN ELIMINAR */}
                 <TouchableOpacity
                   onPress={() => removeImage(i)}
-                  activeOpacity={0.9}
                   style={{
                     position: "absolute",
                     top: 8,

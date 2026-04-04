@@ -1,3 +1,4 @@
+import { ApiService } from "@/services/api";
 import { Ionicons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useFocusEffect } from "@react-navigation/native";
@@ -12,11 +13,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+
+import AppVersionFooter from "../_components/AppVersionFooter";
+import { recordDiagnostic } from "../_lib/diagnostics";
 import "../../global.css";
 import ReportItem from "../components/common/ReportItem";
 import Button from "../components/ui/Button";
-
-const apiUrl = process.env.EXPO_PUBLIC_SERVER_IP;
 
 export default function HomeScreen() {
   const [reports, setReports] = useState([]);
@@ -24,8 +26,6 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [dateFilter, setDateFilter] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
 
   const router = useRouter();
 
@@ -34,11 +34,17 @@ export default function HomeScreen() {
     setDateFilter(null);
     try {
       setLoading(true);
-      const res = await fetch(`${apiUrl}/pending-reports`);
-      const data = await res.json();
+
+      // 🔥 SOLO reportes recientes (1 día)
+      const data = await ApiService.getRecentPendingReports(2);
       setReports(data);
     } catch (error) {
-      console.error("Error fetching reports:", error);
+      recordDiagnostic({
+        source: "home.fetchRecentReports",
+        message: "No se pudieron cargar los reportes recientes.",
+        error,
+      });
+      console.error("Error fetching recent reports:", error);
     } finally {
       setLoading(false);
     }
@@ -47,7 +53,7 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchReports();
-    }, [])
+    }, []),
   );
 
   // 🔹 Filtrado de reportes
@@ -57,8 +63,11 @@ export default function HomeScreen() {
       const caseTypeEn = (r.caseType?.incident || "").toLowerCase();
       const caseTypeEs = (r.caseType?.translate || "").toLowerCase();
       const propertyName = (r.property?.name || "").toLowerCase();
-      const monitorName =
-        (r.madeBy?.name || r.contributedBy?.name || "").toLowerCase();
+      const monitorName = (
+        r.madeBy?.name ||
+        r.contributedBy?.name ||
+        ""
+      ).toLowerCase();
 
       const matchesSearch =
         caseTypeEn.includes(searchLower) ||
@@ -71,10 +80,7 @@ export default function HomeScreen() {
     });
   }, [reports, search, dateFilter]);
 
-
-
   const navigateToDetails = (id) => router.replace(`/report/${id}`);
-
 
   // 🔹 Cambio de fecha
   const handleDateChange = (event, selectedDate) => {
@@ -85,29 +91,33 @@ export default function HomeScreen() {
       const year = selectedDate.getFullYear();
       const formatted = `${day}/${month}/${year}`;
       setDateFilter(formatted);
-      setCurrentPage(1);
     }
   };
-
 
   return (
     <View className="flex-1 bg-[#F9F7F1] p-4">
       {/* 🔍 Buscador */}
       <View className="flex-row items-center bg-white rounded-xl px-4 py-1 shadow mb-4">
-        <Ionicons name="search" size={20} color="#8A6E28" style={{ marginRight: 8 }} />
+        <Ionicons
+          name="search"
+          size={20}
+          color="#8A6E28"
+          style={{ marginRight: 8 }}
+        />
         <TextInput
           placeholder="Buscar reportes..."
           value={search}
-          onChangeText={(text) => {
-            setSearch(text);
-            setCurrentPage(1);
-          }}
+          onChangeText={setSearch}
           className="flex-1 text-gray-800"
         />
       </View>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#C9A13B" style={{ marginTop: 40 }} />
+        <ActivityIndicator
+          size="large"
+          color="#C9A13B"
+          style={{ marginTop: 40 }}
+        />
       ) : (
         <>
           {/* 🔹 Header con filtros */}
@@ -150,18 +160,21 @@ export default function HomeScreen() {
 
           {/* 🔹 Lista de reportes */}
           <FlatList
-            data={filteredReports} 
+            data={filteredReports}
             renderItem={({ item }) => (
-              <ReportItem report={item} onPress={() => navigateToDetails(item.id)} />
+              <ReportItem
+                report={item}
+                onPress={() => navigateToDetails(item.id)}
+              />
             )}
             keyExtractor={(item) => item.id.toString()}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 100 }}
+            ListFooterComponent={<AppVersionFooter />}
             refreshing={loading}
             onRefresh={fetchReports}
           />
 
-     
           {/* 🟡 Botón flotante */}
           <View className="absolute bottom-8 left-4 right-4 mb-5">
             <Button
