@@ -1046,7 +1046,7 @@ export default function AttendanceScreen() {
   }, []);
 
   const lookupEmployee = useCallback(
-    async (employeeId?: number) => {
+    async (employeeId?: number, fallbackEmployee?: AttendanceEmployee) => {
       const targetId = employeeId ?? selectedEmployee?.id;
 
       if (!targetId) {
@@ -1059,23 +1059,69 @@ export default function AttendanceScreen() {
         const data = await AttendanceApi.lookup(String(targetId));
         setLookup(data);
       } catch (error) {
-        setLookup(null);
+        const fallback = fallbackEmployee ?? selectedEmployee;
+        const dashboardRow = dashboard?.rows?.find(
+          (row) => row.employeeId === targetId,
+        );
+
+        if (fallback && fallback.id === targetId) {
+          setLookup({
+            employee: fallback,
+            expectedShift: {
+              operationalDate:
+                dashboard?.operationalDate ?? new Date().toISOString().slice(0, 10),
+              scheduledStart: dashboardRow?.scheduledStart ?? null,
+              scheduledEnd: dashboardRow?.scheduledEnd ?? null,
+              scheduled: Boolean(dashboardRow?.scheduled),
+              offDay: Boolean(dashboardRow?.offDay),
+              title: dashboardRow?.shiftLabel ?? "Turno por confirmar",
+            },
+            currentSession:
+              dashboardRow?.currentSessionId && dashboardRow.clockInAt
+                ? {
+                    sessionId: dashboardRow.currentSessionId,
+                    status:
+                      dashboardRow.status === "En descanso"
+                        ? "ON_BREAK"
+                        : "ACTIVE",
+                    operationalDate:
+                      dashboard?.operationalDate ??
+                      new Date().toISOString().slice(0, 10),
+                    shiftLabel: dashboardRow.shiftLabel,
+                    scheduledStart: dashboardRow.scheduledStart ?? null,
+                    scheduledEnd: dashboardRow.scheduledEnd ?? null,
+                    clockInAt: dashboardRow.clockInAt,
+                    clockOutAt: dashboardRow.clockOutAt ?? null,
+                    workedMinutes: dashboardRow.workedMinutes,
+                    breakMinutes: dashboardRow.breakMinutes,
+                    lateMinutes: dashboardRow.lateMinutes,
+                    earlyLeaveMinutes: dashboardRow.earlyLeaveMinutes,
+                    overtimeMinutes: dashboardRow.overtimeMinutes,
+                    activeBreak: dashboardRow.activeBreak,
+                    closeType: dashboardRow.closeType ?? null,
+                    reviewStatus: dashboardRow.reviewStatus ?? null,
+                  }
+                : null,
+            message:
+              "No pudimos refrescar la ficha por red, pero puedes registrar el movimiento.",
+          });
+        } else {
+          setLookup(null);
+        }
         recordDiagnostic({
           source: "attendance.lookupEmployee",
           message: `No se pudo cargar la ficha del empleado ${targetId}.`,
           error,
         });
         Alert.alert(
-          "No encontrado",
-          error instanceof Error
-            ? error.message
-            : "No se encontro el empleado.",
+          "Conexion inestable",
+          "No pudimos refrescar la ficha completa. Puedes intentar registrar el turno; la app confirmara con el servidor.",
         );
       } finally {
         setLoadingLookup(false);
       }
     },
-    [selectedEmployee],
+    [dashboard, selectedEmployee],
   );
 
   const refreshAll = useCallback(async () => {
@@ -1252,19 +1298,6 @@ export default function AttendanceScreen() {
       return;
     }
 
-    const selfieForAction =
-      selfieUri ||
-      (SELFIE_REQUIRED
-        ? await captureSelfie({
-            contextLabel: "inicio de turno",
-            persistPreview: false,
-          })
-        : null);
-
-    if (SELFIE_REQUIRED && !selfieForAction) {
-      return;
-    }
-
     const securityCode = await requestSecurityCode(
       selectedEmployee,
       "iniciar el turno",
@@ -1277,11 +1310,34 @@ export default function AttendanceScreen() {
     try {
       const employeeName = selectedEmployee.name;
       setSubmitting(true);
-      await AttendanceApi.clockIn(
+      const session = await AttendanceApi.clockIn(
         String(selectedEmployee.id),
-        selfieForAction,
+        null,
         securityCode,
       );
+
+      const selfieForAction =
+        selfieUri ||
+        (SELFIE_REQUIRED
+          ? await captureSelfie({
+              contextLabel: "inicio de turno",
+              persistPreview: false,
+            })
+          : null);
+
+      if (selfieForAction) {
+        await AttendanceApi.uploadClockInSelfie(
+          session.sessionId,
+          selfieForAction,
+        ).catch((uploadError) => {
+          recordDiagnostic({
+            source: "attendance.clockInSelfieUpload",
+            message: `El ingreso de ${employeeName} quedo registrado, pero fallo la subida de la selfie.`,
+            error: uploadError,
+          });
+        });
+      }
+
       clearPunchState();
       await loadDashboard();
       await showSuccessFeedback(
@@ -1310,7 +1366,7 @@ export default function AttendanceScreen() {
       setSelectedEmployee(employee);
       setEmployeeQuery(employee.name);
       setSelfieUri(null);
-      await lookupEmployee(employee.id);
+      await lookupEmployee(employee.id, employee);
     },
     [lookupEmployee],
   );
@@ -1368,19 +1424,6 @@ export default function AttendanceScreen() {
   const handleClockOut = async () => {
     if (!currentSession || !currentEmployee) return;
 
-    const selfieForAction =
-      selfieUri ||
-      (SELFIE_REQUIRED
-        ? await captureSelfie({
-            contextLabel: "final de turno",
-            persistPreview: false,
-          })
-        : null);
-
-    if (SELFIE_REQUIRED && !selfieForAction) {
-      return;
-    }
-
     const employee = currentEmployee;
     const sessionId = currentSession.sessionId;
 
@@ -1399,11 +1442,58 @@ export default function AttendanceScreen() {
             return;
           }
 
-          const session = await runAction(
-            async () =>
-              AttendanceApi.clockOut(sessionId, selfieForAction, securityCode),
-            "Salida registrada correctamente.",
-          );
+          let session: AttendanceSessionSummary | null = null;
+
+          try {
+            setSubmitting(true);
+            session = await AttendanceApi.clockOut(sessionId, null, securityCode);
+
+            const selfieForAction =
+              selfieUri ||
+              (SELFIE_REQUIRED
+                ? await captureSelfie({
+                    contextLabel: "final de turno",
+                    persistPreview: false,
+                  })
+                : null);
+
+            if (selfieForAction) {
+              await AttendanceApi.uploadClockOutSelfie(
+                session.sessionId,
+                selfieForAction,
+              ).catch((uploadError) => {
+                recordDiagnostic({
+                  source: "attendance.clockOutSelfieUpload",
+                  message:
+                    "La salida quedo registrada, pero fallo la subida de la selfie.",
+                  error: uploadError,
+                });
+              });
+            }
+
+            await loadDashboard();
+            if (selectedEmployee?.id) {
+              await lookupEmployee(selectedEmployee.id);
+            }
+            await showSuccessFeedback(
+              "Movimiento registrado",
+              "Salida registrada correctamente.",
+            );
+          } catch (error) {
+            recordDiagnostic({
+              source: "attendance.clockOut",
+              message: "No se pudo registrar la salida de control horario.",
+              error,
+            });
+            Alert.alert(
+              "Error",
+              error instanceof Error
+                ? error.message
+                : "No se pudo completar la accion.",
+            );
+          } finally {
+            setSubmitting(false);
+          }
 
           if (!session) {
             return;

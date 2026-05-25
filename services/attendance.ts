@@ -8,7 +8,7 @@ import {
 } from "@/types/attendance";
 import { runWithCacheFallback } from "@/utils/apiCache";
 import resolveApiBaseUrl from "@/utils/apiBaseUrl";
-import { fetchWithRetry } from "@/utils/fetchWithRetry";
+import { fetchWithRetry, isRetryableNetworkError } from "@/utils/fetchWithRetry";
 import { Platform } from "react-native";
 
 const API_URL = resolveApiBaseUrl();
@@ -116,17 +116,51 @@ export const AttendanceApi = {
     selfieUri?: string | null,
     securityCode?: string | null,
   ) {
-    const formData = new FormData();
-    formData.append("code", code.trim());
+    let session: AttendanceSessionSummary;
 
-    if (securityCode?.trim()) {
-      formData.append("securityCode", securityCode.trim());
+    try {
+      const result = await parseResponse<ApiActionResponse<AttendanceSessionSummary>>(
+        await fetch(buildUrl("attendance/clock-in-fast"), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            code: code.trim(),
+            securityCode: securityCode?.trim() || null,
+          }),
+        }),
+      );
+
+      session = result.data;
+    } catch (error) {
+      if (!isRetryableNetworkError(error)) {
+        throw error;
+      }
+
+      const confirmed = await this.lookup(code).catch(() => null);
+      if (!confirmed?.currentSession) {
+        throw error;
+      }
+
+      session = confirmed.currentSession;
     }
 
+    if (!selfieUri) {
+      return session;
+    }
+
+    return (await this.uploadClockInSelfie(session.sessionId, selfieUri).catch(
+      () => null,
+    )) || session;
+  },
+
+  async uploadClockInSelfie(sessionId: number, selfieUri: string) {
+    const formData = new FormData();
     appendSelfieOrThrow(formData, selfieUri, "clock-in");
 
     const result = await parseResponse<ApiActionResponse<AttendanceSessionSummary>>(
-      await fetch(buildUrl("attendance/clock-in"), {
+      await fetch(buildUrl(`attendance/sessions/${sessionId}/clock-in-selfie`), {
         method: "POST",
         body: formData,
       }),
@@ -184,14 +218,35 @@ export const AttendanceApi = {
     selfieUri?: string | null,
     securityCode?: string | null,
   ) {
-    const formData = new FormData();
-    if (securityCode?.trim()) {
-      formData.append("securityCode", securityCode.trim());
+    const result = await parseResponse<ApiActionResponse<AttendanceSessionSummary>>(
+      await fetch(buildUrl(`attendance/sessions/${sessionId}/clock-out-fast`), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          securityCode: securityCode?.trim() || null,
+        }),
+      }),
+    );
+
+    const session = result.data;
+
+    if (!selfieUri) {
+      return session;
     }
+
+    return (await this.uploadClockOutSelfie(session.sessionId, selfieUri).catch(
+      () => null,
+    )) || session;
+  },
+
+  async uploadClockOutSelfie(sessionId: number, selfieUri: string) {
+    const formData = new FormData();
     appendSelfieOrThrow(formData, selfieUri, "clock-out");
 
     const result = await parseResponse<ApiActionResponse<AttendanceSessionSummary>>(
-      await fetch(buildUrl(`attendance/sessions/${sessionId}/clock-out`), {
+      await fetch(buildUrl(`attendance/sessions/${sessionId}/clock-out-selfie`), {
         method: "POST",
         body: formData,
       }),
