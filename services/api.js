@@ -1,5 +1,3 @@
-import { Buffer } from "buffer";
-import { Alert } from "react-native";
 import { runWithCacheFallback } from "@/utils/apiCache";
 import resolveApiBaseUrl from "@/utils/apiBaseUrl";
 import { fetchWithRetry } from "@/utils/fetchWithRetry";
@@ -7,7 +5,6 @@ import { fetchWithRetry } from "@/utils/fetchWithRetry";
 const API_URL = resolveApiBaseUrl();
 const CATALOG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const RECENT_REPORTS_CACHE_TTL_MS = 15 * 60 * 1000;
-global.Buffer = Buffer;
 
 async function apiFetch(endpoint, options = {}) {
   const url = `${API_URL.replace(/\/$/, "")}/${endpoint.replace(/^\//, "")}`;
@@ -87,7 +84,6 @@ export const ApiService = {
     }
   },
   createReport: async (data) => {
-    const formData = new FormData();
     const date = new Date();
     const formattedDate = (d) =>
       d.toLocaleDateString("es-CO", {
@@ -117,39 +113,16 @@ export const ApiService = {
         })),
       };
 
-      const base64Report = Buffer.from(JSON.stringify(reportPayload)).toString(
-        "base64",
-      );
-      formData.append("pendingReport", {
-        uri: `data:application/json;base64,${base64Report}`,
-        name: "pendingReport.json",
-        type: "application/json",
-      });
-
-      // Agregar evidencias
-      if (data.evidences?.length > 0) {
-        console.log(`Adjuntando ${data.evidences.length} evidencias...`);
-        data.evidences.forEach((file, i) => {
-          console.log(`   → ${file.uri}`);
-          formData.append("evidences", {
-            uri: file.uri,
-            type: file.type || "image/jpeg",
-            name: file.name || `evidence_${i}.jpg`,
-          });
-        });
-      } else {
-        console.log(" No hay evidencias para adjuntar.");
-      }
-
-      const endpoint = `${API_URL}/pending-reports`;
+      const endpoint = `${API_URL}/pending-reports/json`;
       console.log("Enviando a:", endpoint);
 
       const response = await fetch(endpoint, {
         method: "POST",
         headers: {
+          "Content-Type": "application/json",
           Userid: data.contributedBy.id.toString(),
         },
-        body: formData,
+        body: JSON.stringify(reportPayload),
       });
 
       console.log(" Respuesta recibida con código:", response.status);
@@ -171,13 +144,40 @@ export const ApiService = {
       }
 
       console.log("Reporte creado correctamente:", result);
-      return result;
+
+      const failedEvidences = [];
+      const reportId = result?.reportId;
+
+      if (reportId && data.evidences?.length > 0) {
+        for (const [index, file] of data.evidences.entries()) {
+          try {
+            await ApiService.addPendingEvidences(
+              reportId,
+              [
+                {
+                  uri: file.uri,
+                  type: file.type || "image/jpeg",
+                  name: file.name || `evidence_${index}.jpg`,
+                },
+              ],
+              data.contributedBy.id,
+            );
+          } catch (uploadError) {
+            console.error(
+              `Error al subir evidencia ${index + 1}/${data.evidences.length}:`,
+              uploadError,
+            );
+            failedEvidences.push(index);
+          }
+        }
+      }
+
+      return {
+        ...result,
+        failedEvidenceCount: failedEvidences.length,
+      };
     } catch (error) {
       console.error("Error completo al enviar reporte:", error);
-      Alert.alert(
-        "Error al enviar reporte",
-        error.message || "Error desconocido",
-      );
       throw error;
     }
   },
@@ -202,7 +202,7 @@ export const ApiService = {
         {
           method: "PUT",
           headers: {
-            Userid: "123",
+            Userid: userId?.toString() || "0",
             // 👇 Importante: NO pongas "Content-Type", fetch lo calcula solo
           },
           body: formData,
@@ -276,8 +276,8 @@ export const ApiService = {
   getRecentPendingReports: async (days = 2) => {
     try {
       return await apiFetchWithCache(
-        `pending-reports/recent?days=${days}`,
-        `reports/recent/${days}`,
+        `pending-reports/recent-summary?days=${days}`,
+        `reports/recent-summary/${days}`,
         RECENT_REPORTS_CACHE_TTL_MS,
       );
     } catch (err) {

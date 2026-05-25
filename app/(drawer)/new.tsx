@@ -27,6 +27,8 @@ import TimePickerInput from "../components/ui/TimePickerInput";
 const BUCKET_URL = process.env.EXPO_PUBLIC_BUCKET;
 
 export type ReportImage = {
+  id?: number;
+  path?: string;
   uri: string;
   isRemote: boolean; // 👈 clave
 };
@@ -60,15 +62,38 @@ export default function NewReport() {
   const [incidentLocations, setIncidentLocations] = useState<any[]>([]);
   const [followings, setFollowings] = useState<any[]>([]);
   const [isHighPriority, setIsHighPriority] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
   const [properties, setProperties] = useState<any[]>([]);
-  const [buildings, setBuildings] = useState<any[]>([]);
+  const [buildings] = useState<any[]>([]);
   const [monitors, setMonitors] = useState<any[]>([]);
   const [incidents, setIncidents] = useState<any[]>([]);
 
   const [images, setImages] = useState<ReportImage[]>([]);
 
   const scrollRef = useRef<ScrollView>(null);
+
+  const hasMeaningfulChanges = useCallback(() => {
+    return (
+      propertyId !== "" ||
+      incidentId !== "" ||
+      startTime !== "" ||
+      endTime !== "" ||
+      description.trim().length > 0 ||
+      images.length > 0 ||
+      incidentLocations.length > 0 ||
+      followings.length > 0 ||
+      isHighPriority === true
+    );
+  }, [
+    propertyId,
+    incidentId,
+    startTime,
+    endTime,
+    description,
+    images,
+    incidentLocations,
+    followings,
+    isHighPriority,
+  ]);
 
   /* =========================
      RESET
@@ -148,21 +173,12 @@ export default function NewReport() {
     followings,
     isHighPriority,
     currentDraftId,
+    hasMeaningfulChanges,
+    incidents,
+    monitorId,
+    monitors,
+    properties,
   ]);
-
-  const hasMeaningfulChanges = () => {
-    return (
-      propertyId !== "" ||
-      incidentId !== "" ||
-      startTime !== "" ||
-      endTime !== "" ||
-      description.trim().length > 0 ||
-      images.length > 0 ||
-      incidentLocations.length > 0 ||
-      followings.length > 0 ||
-      isHighPriority === true
-    );
-  };
 
   /* =========================
      CARGA INICIAL (3 MODOS)
@@ -312,6 +328,8 @@ export default function NewReport() {
         .map((e) => {
           const path = e.url || e.path;
           return {
+            id: e.id,
+            path,
             uri: path.startsWith("http") ? path : `${BUCKET_URL}${path}`,
             isRemote: true,
           };
@@ -354,7 +372,13 @@ export default function NewReport() {
           })),
         };
 
-        await ApiService.createReport(payload);
+        const result = await ApiService.createReport(payload);
+        if (result?.failedEvidenceCount > 0) {
+          Alert.alert(
+            "Reporte guardado",
+            `El reporte quedo creado, pero ${result.failedEvidenceCount} evidencia(s) no se pudieron subir. Puedes editar el reporte e intentar agregarlas de nuevo.`,
+          );
+        }
       }
 
       // ==========================
@@ -376,15 +400,31 @@ export default function NewReport() {
 
         // 2️⃣ Subir SOLO imágenes nuevas
         if (newImages.length > 0) {
-          await ApiService.addPendingEvidences(
-            id,
-            newImages.map((img, i) => ({
-              uri: img.uri,
-              type: "image/jpeg",
-              name: `evidence_${i}.jpg`,
-            })),
-            monitorId,
-          );
+          let failedEvidenceCount = 0;
+          for (const [index, img] of newImages.entries()) {
+            try {
+              await ApiService.addPendingEvidences(
+                id,
+                [
+                  {
+                    uri: img.uri,
+                    type: "image/jpeg",
+                    name: `evidence_${index}.jpg`,
+                  },
+                ],
+                monitorId,
+              );
+            } catch {
+              failedEvidenceCount += 1;
+            }
+          }
+
+          if (failedEvidenceCount > 0) {
+            Alert.alert(
+              "Reporte actualizado",
+              `${failedEvidenceCount} evidencia(s) no se pudieron subir. El resto del reporte quedo guardado.`,
+            );
+          }
         }
       }
 
@@ -579,9 +619,10 @@ export default function NewReport() {
               images={images}
               setImages={setImages}
               maxImages={10}
-              onRemoveRemoteImage={async (url) => {
+              onRemoveRemoteImage={async (image) => {
                 await ApiService.deletePendingEvidence(id!, {
-                  path: url.replace(BUCKET_URL, ""),
+                  id: image.id,
+                  path: image.path || image.uri.replace(BUCKET_URL, ""),
                 });
               }}
             />

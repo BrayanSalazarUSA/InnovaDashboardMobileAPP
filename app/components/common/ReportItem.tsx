@@ -3,7 +3,6 @@ import React from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
 const BUCKET_URL = process.env.EXPO_PUBLIC_BUCKET;
-const REPORT_DRAFT_KEY = "NEW_REPORT_DRAFT";
 
 type Props = {
   report: any;
@@ -39,16 +38,15 @@ export default function ReportItem({ report, onPress }: Props) {
     incidentLocations,
   } = report;
 
-  const followingsCount = followings?.length || 0;
-  const evidencesCount = evidences?.length || 0;
-  const incidentLocationsCount = incidentLocations?.length || 0;
+  const followingsCount = report.followingCount ?? followings?.length ?? 0;
+  const evidencesCount = report.evidenceCount ?? evidences?.length ?? 0;
+  const incidentLocationsCount =
+    report.incidentLocationCount ?? incidentLocations?.length ?? 0;
 
   /** 🔥 NORMALIZACIÓN Y FALLBACK SEGURO */
   const normalizedStatus = (status || "PENDING").trim().toUpperCase();
   const { label, color, icon } =
     stateStyles[normalizedStatus] || stateStyles["PENDING"];
-
-  const avatarInitial = madeBy?.name ? madeBy.name[0].toUpperCase() : "?";
 
   return (
     <TouchableOpacity

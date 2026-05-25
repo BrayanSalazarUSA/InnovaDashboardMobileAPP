@@ -15,7 +15,7 @@ type Props = {
   images: ReportImage[];
   setImages: React.Dispatch<React.SetStateAction<ReportImage[]>>;
   label?: string;
-  onRemoveRemoteImage?: (url: string) => Promise<void>;
+  onRemoveRemoteImage?: (image: ReportImage) => Promise<void>;
   maxImages?: number;
 };
 
@@ -85,20 +85,20 @@ export default function ImageUploader({
     console.log("❌ Index:", index);
     console.log("❌ Imagen:", img);
 
-    // UX inmediata
-    setImages((prev) => prev.filter((_, i) => i !== index));
-
     // Backend si es remota
     if (img.isRemote && onRemoveRemoteImage) {
       console.log("❌ Eliminando imagen remota en backend:", img.uri);
       try {
-        await onRemoveRemoteImage(img.uri);
+        await onRemoveRemoteImage(img);
         console.log("✅ Imagen eliminada en backend");
       } catch (e) {
         console.error("❌ Error eliminando imagen remota", e);
         Alert.alert("Error", "No se pudo eliminar la imagen del servidor");
+        return;
       }
     }
+
+    setImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   /* =========================
