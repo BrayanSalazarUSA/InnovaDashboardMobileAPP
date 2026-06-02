@@ -112,6 +112,16 @@ export default function DrawerLayout() {
         }}
       />
       <Drawer.Screen
+        name="support-tickets"
+        options={{
+          drawerLabel: "Casos de Soporte",
+          title: "Casos de Soporte",
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="construct-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Drawer.Screen
         name="diagnostics"
         options={{
           drawerLabel: "Diagnostico",
