@@ -22,6 +22,8 @@ export function createEmptyDraft(monitorId: string): LocalDraftReport {
     incidentLocations: [],
 
     isHighPriority: false,
+    policeFirstResponderNotified: false,
+    policeFirstResponderScene: "",
     status: "draft",
   };
 }

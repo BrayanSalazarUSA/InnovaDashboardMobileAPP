@@ -56,6 +56,22 @@ const formattedDate = (date) =>
     date.getMonth() + 1,
   ).padStart(2, "0")}/${date.getFullYear()}`;
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function retryUpload(operation, retries = 1) {
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retries) break;
+      await sleep(700 * (attempt + 1));
+    }
+  }
+  throw lastError;
+}
+
 export const ApiService = {
   getProperties: () =>
     apiFetchWithCache(
@@ -104,6 +120,11 @@ export const ApiService = {
         incidentEndTime: data.incidentEndTime,
         followings: data.followings,
         priority: data.priority,
+        policeFirstResponderNotified:
+          data.policeFirstResponderNotified ?? false,
+        policeFirstResponderScene: data.policeFirstResponderNotified
+          ? data.policeFirstResponderScene
+          : null,
         reportDetails: data.reportDetails,
         incidentLocations: data.incidentLocations.map((loc) => ({
           latitude: loc.latitude,
@@ -145,36 +166,19 @@ export const ApiService = {
 
       console.log("Reporte creado correctamente:", result);
 
-      const failedEvidences = [];
       const reportId = result?.reportId;
-
-      if (reportId && data.evidences?.length > 0) {
-        for (const [index, file] of data.evidences.entries()) {
-          try {
-            await ApiService.addPendingEvidences(
+      const failedEvidenceCount =
+        reportId && data.evidences?.length > 0
+          ? await ApiService.uploadPendingEvidencesSafely(
               reportId,
-              [
-                {
-                  uri: file.uri,
-                  type: file.type || "image/jpeg",
-                  name: file.name || `evidence_${index}.jpg`,
-                },
-              ],
+              data.evidences,
               data.contributedBy.id,
-            );
-          } catch (uploadError) {
-            console.error(
-              `Error al subir evidencia ${index + 1}/${data.evidences.length}:`,
-              uploadError,
-            );
-            failedEvidences.push(index);
-          }
-        }
-      }
+            )
+          : 0;
 
       return {
         ...result,
-        failedEvidenceCount: failedEvidences.length,
+        failedEvidenceCount,
       };
     } catch (error) {
       console.error("Error completo al enviar reporte:", error);
@@ -232,6 +236,38 @@ export const ApiService = {
       throw error;
     }
   },
+  uploadPendingEvidencesSafely: async (reportId, evidences = [], userId) => {
+    if (!reportId || evidences.length === 0) return 0;
+
+    let failedEvidenceCount = 0;
+    for (const [index, file] of evidences.entries()) {
+      try {
+        await retryUpload(
+          () =>
+            ApiService.addPendingEvidences(
+              reportId,
+              [
+                {
+                  uri: file.uri,
+                  type: file.type || "image/jpeg",
+                  name: file.name || `evidence_${index}.jpg`,
+                },
+              ],
+              userId,
+            ),
+          1,
+        );
+      } catch (uploadError) {
+        console.error(
+          `Error al subir evidencia ${index + 1}/${evidences.length}:`,
+          uploadError,
+        );
+        failedEvidenceCount += 1;
+      }
+    }
+
+    return failedEvidenceCount;
+  },
   updateReport: async (id, data) => {
     try {
       console.log(`✏️ Actualizando reporte ID: ${id}`);
@@ -252,6 +288,11 @@ export const ApiService = {
           incidentEndTime: data.incidentEndTime,
           reportDetails: data.reportDetails,
           priority: data.priority,
+          policeFirstResponderNotified:
+            data.policeFirstResponderNotified ?? false,
+          policeFirstResponderScene: data.policeFirstResponderNotified
+            ? data.policeFirstResponderScene
+            : null,
           //evidences: data.evidences || [],
           followings: data.followings || [],
           persist: data.persist ?? false,

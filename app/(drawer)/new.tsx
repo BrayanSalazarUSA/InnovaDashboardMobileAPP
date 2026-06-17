@@ -13,9 +13,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Switch } from "react-native-gesture-handler";
 import { ApiService } from "../../services/api";
-import Header from "../components/common/Header";
 import { recordDiagnostic } from "../_lib/diagnostics";
+import Header from "../components/common/Header";
 import CameraFollowingsForm from "../components/ui/CamerasFollowingForm";
 import ImageUploader from "../components/ui/ImageUploader";
 import IncidentLocationsSelector from "../components/ui/IncidentLocationsSelector";
@@ -62,6 +63,10 @@ export default function NewReport() {
   const [incidentLocations, setIncidentLocations] = useState<any[]>([]);
   const [followings, setFollowings] = useState<any[]>([]);
   const [isHighPriority, setIsHighPriority] = useState(false);
+  const [policeFirstResponderNotified, setPoliceFirstResponderNotified] =
+    useState(false);
+  const [policeFirstResponderScene, setPoliceFirstResponderScene] =
+    useState("");
   const [properties, setProperties] = useState<any[]>([]);
   const [buildings] = useState<any[]>([]);
   const [monitors, setMonitors] = useState<any[]>([]);
@@ -81,7 +86,9 @@ export default function NewReport() {
       images.length > 0 ||
       incidentLocations.length > 0 ||
       followings.length > 0 ||
-      isHighPriority === true
+      isHighPriority === true ||
+      policeFirstResponderNotified === true ||
+      policeFirstResponderScene !== ""
     );
   }, [
     propertyId,
@@ -93,6 +100,8 @@ export default function NewReport() {
     incidentLocations,
     followings,
     isHighPriority,
+    policeFirstResponderNotified,
+    policeFirstResponderScene,
   ]);
 
   /* =========================
@@ -109,6 +118,8 @@ export default function NewReport() {
     setIncidentLocations([]);
     setFollowings([]);
     setIsHighPriority(false);
+    setPoliceFirstResponderNotified(false);
+    setPoliceFirstResponderScene("");
   };
 
   useEffect(() => {
@@ -153,6 +164,8 @@ export default function NewReport() {
         incidentLocations,
         followings,
         isHighPriority,
+        policeFirstResponderNotified,
+        policeFirstResponderScene,
 
         status: "draft",
       };
@@ -172,6 +185,8 @@ export default function NewReport() {
     incidentLocations,
     followings,
     isHighPriority,
+    policeFirstResponderNotified,
+    policeFirstResponderScene,
     currentDraftId,
     hasMeaningfulChanges,
     incidents,
@@ -310,6 +325,10 @@ export default function NewReport() {
     setIncidentLocations(draft.incidentLocations || []);
     setFollowings(draft.followings || []);
     setIsHighPriority(draft.isHighPriority || false);
+    setPoliceFirstResponderNotified(
+      draft.policeFirstResponderNotified || false,
+    );
+    setPoliceFirstResponderScene(draft.policeFirstResponderScene || "");
   };
 
   const loadBackendReport = async (reportId: string) => {
@@ -322,6 +341,10 @@ export default function NewReport() {
     setEndTime(report.incidentEndTime || "");
     setDescription(report.reportDetails || "");
     setIsHighPriority(report.priority === "ALTA");
+    setPoliceFirstResponderNotified(
+      report.policeFirstResponderNotified === true,
+    );
+    setPoliceFirstResponderScene(report.policeFirstResponderScene || "");
     setImages(
       report.evidences
         ?.filter((e) => e.path || e.url)
@@ -343,6 +366,14 @@ export default function NewReport() {
      SUBMIT
   ========================== */
   const handleSubmit = async () => {
+    if (policeFirstResponderNotified && !policeFirstResponderScene) {
+      Alert.alert(
+        "Información requerida",
+        "Selecciona si la policía llegó al lugar o si no llegó antes de enviar el reporte.",
+      );
+      return;
+    }
+
     try {
       setSubmitting(true);
 
@@ -362,6 +393,10 @@ export default function NewReport() {
           reportDetails: description,
           followings,
           priority: isHighPriority && "ALTA",
+          policeFirstResponderNotified,
+          policeFirstResponderScene: policeFirstResponderNotified
+            ? policeFirstResponderScene
+            : null,
           incidentLocations,
 
           // 🔥 AQUÍ ESTABA EL PROBLEMA
@@ -395,29 +430,25 @@ export default function NewReport() {
           reportDetails: description,
           followings,
           priority: isHighPriority && "ALTA",
+          policeFirstResponderNotified,
+          policeFirstResponderScene: policeFirstResponderNotified
+            ? policeFirstResponderScene
+            : null,
           incidentLocations,
         });
 
         // 2️⃣ Subir SOLO imágenes nuevas
         if (newImages.length > 0) {
-          let failedEvidenceCount = 0;
-          for (const [index, img] of newImages.entries()) {
-            try {
-              await ApiService.addPendingEvidences(
-                id,
-                [
-                  {
-                    uri: img.uri,
-                    type: "image/jpeg",
-                    name: `evidence_${index}.jpg`,
-                  },
-                ],
-                monitorId,
-              );
-            } catch {
-              failedEvidenceCount += 1;
-            }
-          }
+          const failedEvidenceCount =
+            await ApiService.uploadPendingEvidencesSafely(
+              id,
+              newImages.map((img, index) => ({
+                uri: img.uri,
+                type: "image/jpeg",
+                name: `evidence_${index}.jpg`,
+              })),
+              monitorId,
+            );
 
           if (failedEvidenceCount > 0) {
             Alert.alert(
@@ -548,9 +579,119 @@ export default function NewReport() {
             </View>
 
             {/* ========================
+              POLICIA
+          ======================== */}
+            <View className="mt-5">
+              <Text className="font-semibold text-[#A67C00] mb-1">
+                ¿Se llamó a la policía?
+              </Text>
+
+              <View
+                className="border border-[#F2DEA2] rounded-xl bg-[#fffbe6] px-4 py-3 mb-4"
+                style={{
+                  shadowColor: "#000",
+                  shadowOpacity: 0.04,
+                  shadowRadius: 3,
+                }}
+              >
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-row items-center">
+                    <MaterialCommunityIcons
+                      name="shield-check-outline"
+                      size={20}
+                      color="#A67C00"
+                    />
+
+                    <Text className="ml-2 text-base text-gray-800 font-medium">
+                      Notificación policial
+                    </Text>
+                  </View>
+
+                  <View className="flex-row items-center">
+                    <Text
+                      className={`mr-2 font-medium ${
+                        policeFirstResponderNotified
+                          ? "text-[#A67C00]"
+                          : "text-gray-500"
+                      }`}
+                    >
+                      {policeFirstResponderNotified ? "Sí" : "No"}
+                    </Text>
+
+                    <Switch
+                      value={policeFirstResponderNotified}
+                      onValueChange={(value) => {
+                        setPoliceFirstResponderNotified(value);
+
+                        if (!value) {
+                          setPoliceFirstResponderScene("");
+                        }
+                      }}
+                      trackColor={{
+                        false: "#D9D9D9",
+                        true: "#D9C27A",
+                      }}
+                      thumbColor={
+                        policeFirstResponderNotified ? "#A67C00" : "#FFFFFF"
+                      }
+                    />
+                  </View>
+                </View>
+
+                {policeFirstResponderNotified && (
+                  <View className="mt-4 pt-3 border-t border-[#F2DEA2]">
+                    <Text className="text-sm font-medium text-[#6A5F3B] mb-3">
+                      ¿La policía llegó al lugar?
+                    </Text>
+
+                    <View className="flex-row gap-2">
+                      {[
+                        { value: "Yes", label: "Llegaron" },
+                        { value: "No", label: "No llegaron" },
+                      ].map((option) => {
+                        const selected =
+                          policeFirstResponderScene === option.value;
+
+                        return (
+                          <TouchableOpacity
+                            key={option.value}
+                            onPress={() =>
+                              setPoliceFirstResponderScene(option.value)
+                            }
+                            className={`flex-1 py-3 rounded-xl border flex-row justify-center items-center ${
+                              selected
+                                ? "bg-[#EFF6FF] border-[#0A6BB8]"
+                                : "bg-white border-[#F2DEA2]"
+                            }`}
+                          >
+                            <Text
+                              className={`font-medium ${
+                                selected ? "text-[#0A6BB8]" : "text-gray-700"
+                              }`}
+                            >
+                              {option.label}
+                            </Text>
+
+                            {selected && (
+                              <Ionicons
+                                name="checkmark-circle"
+                                size={18}
+                                color="#0A6BB8"
+                                style={{ marginLeft: 6 }}
+                              />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                )}
+              </View>
+            </View>
+            {/* ========================
               HORAS
           ======================== */}
-            <View className="mt-4 flex-row gap-3">
+            <View className="mt-1 flex-row gap-3">
               <View className="flex-1">
                 <TimePickerInput
                   label="Hora de inicio"

@@ -24,5 +24,7 @@ export type LocalDraftReport = {
   incidentLocations: any[];
 
   isHighPriority: boolean;
+  policeFirstResponderNotified?: boolean;
+  policeFirstResponderScene?: string;
   status: "draft" | "ready";
 };
