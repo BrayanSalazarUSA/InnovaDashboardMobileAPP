@@ -23,7 +23,7 @@ import {
 } from "react-native";
 
 import AppVersionFooter from "../_components/AppVersionFooter";
-import { recordDiagnostic } from "../_lib/diagnostics";
+import { recordDiagnostic } from "../../utils/diagnostics";
 import type { ReportImage } from "./new";
 import ImageUploader from "../components/ui/ImageUploader";
 import MonitorPicker from "../components/ui/MonitorPicker";

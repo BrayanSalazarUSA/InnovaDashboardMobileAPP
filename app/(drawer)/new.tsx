@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { Switch } from "react-native-gesture-handler";
 import { ApiService } from "../../services/api";
-import { recordDiagnostic } from "../_lib/diagnostics";
+import { recordDiagnostic } from "../../utils/diagnostics";
 import Header from "../components/common/Header";
 import CameraFollowingsForm from "../components/ui/CamerasFollowingForm";
 import ImageUploader from "../components/ui/ImageUploader";
@@ -27,10 +27,21 @@ import TextAreaInput from "../components/ui/TextAreaInput";
 import TimePickerInput from "../components/ui/TimePickerInput";
 const BUCKET_URL = process.env.EXPO_PUBLIC_BUCKET;
 
+function normalizeId(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : value;
+}
+
 export type ReportImage = {
   id?: number;
   path?: string;
   uri: string;
+  type?: string;
+  name?: string;
   isRemote: boolean; // 👈 clave
 };
 
@@ -379,20 +390,26 @@ export default function NewReport() {
 
       // 🟢 Imágenes nuevas (locales)
       const newImages = images.filter((img) => !img.isRemote);
+      const selectedProperty = properties.find((p) => p.id === propertyId);
+      const selectedIncident = incidents.find((i) => String(i.id) === String(incidentId));
+      const selectedMonitor = monitors.find((m) => String(m.id) === String(monitorId));
+      const safePriority = isHighPriority ? "ALTA" : null;
 
       // ==========================
       // 🟢 CREAR REPORTE NUEVO
       // ==========================
       if (!isEditMode) {
         const payload = {
-          property: properties.find((p) => p.id === propertyId),
-          contributedBy: { id: monitorId },
-          caseType: incidents.find((i) => i.id === incidentId),
+          property: selectedProperty,
+          contributedBy: selectedMonitor
+            ? { ...selectedMonitor, id: normalizeId(selectedMonitor.id) }
+            : { id: normalizeId(monitorId) },
+          caseType: selectedIncident,
           incidentStartTime: startTime,
           incidentEndTime: endTime,
           reportDetails: description,
           followings,
-          priority: isHighPriority && "ALTA",
+          priority: safePriority,
           policeFirstResponderNotified,
           policeFirstResponderScene: policeFirstResponderNotified
             ? policeFirstResponderScene
@@ -402,8 +419,8 @@ export default function NewReport() {
           // 🔥 AQUÍ ESTABA EL PROBLEMA
           evidences: newImages.map((img, i) => ({
             uri: img.uri,
-            type: "image/jpeg",
-            name: `evidence_${i}.jpg`,
+            type: img.type || "image/jpeg",
+            name: img.name || `evidence_${i}.jpg`,
           })),
         };
 
@@ -422,20 +439,22 @@ export default function NewReport() {
       if (isEditMode && id) {
         // 1️⃣ Actualizar datos del reporte
         await ApiService.updateReport(id, {
-          property: properties.find((p) => p.id === propertyId),
-          contributedBy: { id: monitorId },
-          caseType: incidents.find((i) => i.id === incidentId),
+          property: selectedProperty,
+          contributedBy: selectedMonitor
+            ? { ...selectedMonitor, id: normalizeId(selectedMonitor.id) }
+            : { id: normalizeId(monitorId) },
+          caseType: selectedIncident,
           incidentStartTime: startTime,
           incidentEndTime: endTime,
           reportDetails: description,
           followings,
-          priority: isHighPriority && "ALTA",
+          priority: safePriority,
           policeFirstResponderNotified,
           policeFirstResponderScene: policeFirstResponderNotified
             ? policeFirstResponderScene
             : null,
           incidentLocations,
-        });
+        }, normalizeId(monitorId));
 
         // 2️⃣ Subir SOLO imágenes nuevas
         if (newImages.length > 0) {
@@ -444,8 +463,8 @@ export default function NewReport() {
               id,
               newImages.map((img, index) => ({
                 uri: img.uri,
-                type: "image/jpeg",
-                name: `evidence_${index}.jpg`,
+                type: img.type || "image/jpeg",
+                name: img.name || `evidence_${index}.jpg`,
               })),
               monitorId,
             );
@@ -764,7 +783,7 @@ export default function NewReport() {
                 await ApiService.deletePendingEvidence(id!, {
                   id: image.id,
                   path: image.path || image.uri.replace(BUCKET_URL, ""),
-                });
+                }, normalizeId(monitorId));
               }}
             />
             {/* ========================

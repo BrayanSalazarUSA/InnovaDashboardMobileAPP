@@ -58,7 +58,7 @@ const formattedDate = (date) =>
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function retryUpload(operation, retries = 1) {
+async function retryUpload(operation, retries = 2) {
   let lastError;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
@@ -255,7 +255,7 @@ export const ApiService = {
               ],
               userId,
             ),
-          1,
+          2,
         );
       } catch (uploadError) {
         console.error(
@@ -268,7 +268,7 @@ export const ApiService = {
 
     return failedEvidenceCount;
   },
-  updateReport: async (id, data) => {
+  updateReport: async (id, data, userId) => {
     try {
       console.log(`✏️ Actualizando reporte ID: ${id}`);
       console.log("📦 Payload:", data);
@@ -277,7 +277,7 @@ export const ApiService = {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Userid: "123",
+          Userid: userId?.toString() || "0",
         },
         body: JSON.stringify({
           property: data.property,
@@ -351,7 +351,7 @@ export const ApiService = {
       throw error;
     }
   },
-  deletePendingEvidence: async (reportId, evidence) => {
+  deletePendingEvidence: async (reportId, evidence, userId) => {
     try {
       console.log(
         ` Eliminando evidencia del reporte pendiente ID: ${reportId}`,
@@ -363,7 +363,7 @@ export const ApiService = {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            Userid: "123",
+            Userid: userId?.toString() || "0",
           },
           body: JSON.stringify(evidence), // se envía el objeto Evidence completo
         },

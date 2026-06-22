@@ -14,17 +14,17 @@ import {
   View,
 } from "react-native";
 
-import AppVersionFooter from "../_components/AppVersionFooter";
-import { recordDiagnostic } from "../_lib/diagnostics";
 import "../../global.css";
+import { recordDiagnostic } from "../../utils/diagnostics";
+import AppVersionFooter from "../_components/AppVersionFooter";
 import ReportItem from "../components/common/ReportItem";
 import Button from "../components/ui/Button";
 
 export default function HomeScreen() {
-  const [reports, setReports] = useState([]);
+  const [reports, setReports] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [dateFilter, setDateFilter] = useState(null);
+  const [dateFilter, setDateFilter] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const router = useRouter();
@@ -80,10 +80,11 @@ export default function HomeScreen() {
     });
   }, [reports, search, dateFilter]);
 
-  const navigateToDetails = (id) => router.replace(`/report/${id}`);
+  const navigateToDetails = (id: string | number) =>
+    router.replace(`/report/${id}`);
 
   // 🔹 Cambio de fecha
-  const handleDateChange = (event, selectedDate) => {
+  const handleDateChange = (event: any, selectedDate: Date | undefined) => {
     setShowDatePicker(false);
     if (selectedDate) {
       const day = String(selectedDate.getDate()).padStart(2, "0");
@@ -130,22 +131,12 @@ export default function HomeScreen() {
               <TouchableOpacity
                 onPress={() => setShowDatePicker(true)}
                 className="flex-row items-center px-3 py-2 rounded-xl border border-[#C9A13B] bg-white"
-                activeOpacity={0.7}
               >
                 <Ionicons name="calendar-outline" size={18} color="#C9A13B" />
                 <Text className="text-[#A67C00] ml-2 font-medium">
                   {dateFilter ? dateFilter : "Filtrar Fecha"}
                 </Text>
               </TouchableOpacity>
-
-              {dateFilter && (
-                <TouchableOpacity
-                  onPress={() => setDateFilter(null)}
-                  className="flex-row items-center py- rounded-xl bg-[#FFF5E1]"
-                >
-                  <Ionicons name="close-circle-outline" size={18} color="red" />
-                </TouchableOpacity>
-              )}
             </View>
           </View>
 

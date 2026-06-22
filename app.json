@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Innova Monitoring App",
+    "name": "Innova Dashboard App",
     "slug": "pending-reports-mobile",
-    "version": "1.0.8",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/logo-innova.png",
     "scheme": "pendingreportsmobile",
@@ -21,6 +21,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.vinixius99.pendingreportsmobile",
+      "googleServicesFile": "./android/app/google-services.json",
         "googleMapsApiKey": "AIzaSyC5w6JDrPKalwOGCYjatejmSHDyP63jQdc"
     },
     "web": {
@@ -29,6 +30,14 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#C9A13B",
+          "sounds": ["./assets/protocol-rington.wav"]
+        }
+      ],
       [
         "expo-image-picker",
         {

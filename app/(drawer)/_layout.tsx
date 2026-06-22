@@ -1,13 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import {
-  DrawerContentScrollView,
-  DrawerItemList,
-} from "@react-navigation/drawer";
 import { Drawer } from "expo-router/drawer";
 import { useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
-
-import AppVersionFooter from "../_components/AppVersionFooter";
 
 export default function DrawerLayout() {
   const [dark, setDark] = useState(false);
@@ -33,7 +27,7 @@ export default function DrawerLayout() {
                 color: dark ? "#fff" : "white",
               }}
             >
-              Innova Monitoring App
+              Innova Dashboard App
             </Text>
           </View>
         ),
@@ -50,23 +44,6 @@ export default function DrawerLayout() {
           </TouchableOpacity>
         ),
       }}
-      drawerContent={(props) => (
-        <View style={{ flex: 1 }}>
-          <DrawerContentScrollView {...props}>
-            <DrawerItemList {...props} />
-          </DrawerContentScrollView>
-          <View
-            style={{
-              borderTopWidth: 1,
-              borderTopColor: "#EFE6CC",
-              paddingHorizontal: 12,
-              paddingBottom: 18,
-            }}
-          >
-            <AppVersionFooter compact />
-          </View>
-        </View>
-      )}
     >
       <Drawer.Screen
         name="index"
@@ -75,6 +52,17 @@ export default function DrawerLayout() {
           title: "Reportes Pendientes",
           drawerIcon: ({ color, size }) => (
             <Ionicons name="list" color={color} size={size} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="protocols"
+        options={{
+          drawerLabel: "Seguimiento de Protocolos",
+          title: "Seguimiento de Protocolos",
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="clipboard" color={color} size={size} />
           ),
         }}
       />

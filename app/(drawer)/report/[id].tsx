@@ -83,7 +83,7 @@ export default function ReportDetail() {
         isActive = false;
         subscription.remove();
       };
-    }, [id])
+    }, [id, router])
   );
   const handleDelete = async () => {
     console.log("Eliminando reporte");
@@ -97,10 +97,13 @@ export default function ReportDetail() {
           style: "destructive",
           onPress: async () => {
             try {
-              await ApiService.deleteReport(id, 5);
+              await ApiService.deleteReport(
+                id,
+                report?.contributedBy?.id || report?.madeBy?.id || 0,
+              );
               Alert.alert("✅ Eliminado", "Reporte eliminado correctamente.");
               router.replace("/(drawer)");
-            } catch (error) {
+            } catch {
               Alert.alert("❌ Error", "No se pudo eliminar el reporte.");
             }
           },

@@ -4,13 +4,18 @@ import {
   ActivityIndicator,
   Animated,
   Image,
+  Platform,
   StyleSheet,
   Text,
   View,
 } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { initializeDiagnostics } from "./_lib/diagnostics";
 import logo from "../assets/images/logo.png";
+import { initializeDiagnostics } from "../utils/diagnostics";
+import ProtocolNotificationCoordinator from "./_components/ProtocolNotificationCoordinator";
+import PushNotificationCoordinator from "./_components/PushNotificationCoordinator";
 
 export default function RootLayout() {
   const [isLoading, setIsLoading] = useState(true);
@@ -40,43 +45,94 @@ export default function RootLayout() {
     return () => clearTimeout(timer);
   }, [fadeAnim, scaleAnim]);
 
-  if (isLoading) {
-    return (
-      <View style={styles.container}>
-        <Animated.View
-          style={[
-            styles.logoContainer,
-            {
-              opacity: fadeAnim,
-              transform: [{ scale: scaleAnim }],
-            },
-          ]}
-        >
-          <Image source={logo} style={styles.logo} resizeMode="contain" />
-          <Text style={styles.title}>Innova Monitoring App</Text>
-          <Text style={styles.slogan}>Reinventando la Seguridad</Text>
-        </Animated.View>
-
-        <ActivityIndicator
-          size="large"
-          color="#C9A13B"
-          style={{ marginTop: 40 }}
-        />
-      </View>
-    );
-  }
-
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(drawer)" />
-    </Stack>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        {Platform.OS === "web" ? (
+          <>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(drawer)" />
+            </Stack>
+
+            {isLoading ? (
+              <View style={styles.loadingOverlay} pointerEvents="auto">
+                <Animated.View
+                  style={[
+                    styles.logoContainer,
+                    {
+                      opacity: fadeAnim,
+                      transform: [{ scale: scaleAnim }],
+                    },
+                  ]}
+                >
+                  <Image
+                    source={logo}
+                    style={styles.logo}
+                    resizeMode="contain"
+                  />
+                  <Text style={styles.title}>Innova Dashboard App</Text>
+                  <Text style={styles.slogan}>Reinventando la Seguridad</Text>
+                </Animated.View>
+
+                <ActivityIndicator
+                  size="large"
+                  color="#C9A13B"
+                  style={{ marginTop: 40 }}
+                />
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <ProtocolNotificationCoordinator>
+            <PushNotificationCoordinator />
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(drawer)" />
+            </Stack>
+
+            {isLoading ? (
+              <View style={styles.loadingOverlay} pointerEvents="auto">
+                <Animated.View
+                  style={[
+                    styles.logoContainer,
+                    {
+                      opacity: fadeAnim,
+                      transform: [{ scale: scaleAnim }],
+                    },
+                  ]}
+                >
+                  <Image
+                    source={logo}
+                    style={styles.logo}
+                    resizeMode="contain"
+                  />
+                  <Text style={styles.title}>Innova Dashboard App</Text>
+                  <Text style={styles.slogan}>Reinventando la Seguridad</Text>
+                </Animated.View>
+
+                <ActivityIndicator
+                  size="large"
+                  color="#C9A13B"
+                  style={{ marginTop: 40 }}
+                />
+              </View>
+            ) : null}
+          </ProtocolNotificationCoordinator>
+        )}
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundImage: "../assets/images/image.png",
+    backgroundColor: "#FFFDF7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#FFFDF7",
     alignItems: "center",
     justifyContent: "center",
   },

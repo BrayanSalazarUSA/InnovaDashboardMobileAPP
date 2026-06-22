@@ -16,6 +16,7 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Image,
   Modal,
   Platform,
@@ -28,7 +29,7 @@ import {
 } from "react-native";
 
 import AppVersionFooter from "../_components/AppVersionFooter";
-import { recordDiagnostic } from "../_lib/diagnostics";
+import { recordDiagnostic } from "../../utils/diagnostics";
 import "../../global.css";
 
 const BUCKET_URL = process.env.EXPO_PUBLIC_BUCKET || "";
@@ -1154,9 +1155,19 @@ export default function AttendanceScreen() {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
 
       if (!permission.granted) {
+        const canOpenSettings = !permission.canAskAgain;
         Alert.alert(
           "Permiso requerido",
           `Necesitamos la camara para tomar la selfie del ${contextLabel}.`,
+          canOpenSettings
+            ? [
+                { text: "Cancelar", style: "cancel" },
+                {
+                  text: "Abrir ajustes",
+                  onPress: () => void Linking.openSettings(),
+                },
+              ]
+            : [{ text: "Entendido" }],
         );
         return null;
       }

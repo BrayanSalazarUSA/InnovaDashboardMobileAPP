@@ -13,6 +13,14 @@ export default function EvidencesGallery({ report, BUCKET_URL }: any) {
   const [evidences, setEvidences] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(Date.now()); // 🔑 Fuerza recarga de imágenes
 
+  const resolveEvidenceUri = (evidence: any) => {
+    const raw = evidence?.url || evidence?.path || evidence?.uri || "";
+
+    if (!raw) return "";
+    if (raw.startsWith("http")) return raw;
+    return `${BUCKET_URL}${raw}`;
+  };
+
   useEffect(() => {
     if (report?.evidences?.length) {
       setEvidences(report.evidences);
@@ -24,7 +32,7 @@ export default function EvidencesGallery({ report, BUCKET_URL }: any) {
       setSelectedImage(null);
       setEvidences([]);
     };
-  }, [report?.id, report?.evidences?.length]);
+  }, [report?.id, report?.evidences]);
 
   if (!report) return null;
 
@@ -34,7 +42,7 @@ export default function EvidencesGallery({ report, BUCKET_URL }: any) {
       <View className="flex-row flex-wrap justify-between">
         {evidences.length > 0 ? (
           evidences.map((e, i) => {
-            const imgUri = `${BUCKET_URL}${e.path}?v=${refreshKey}`;
+            const imgUri = `${resolveEvidenceUri(e)}?v=${refreshKey}`;
             return (
               <TouchableOpacity
                 key={e.id || i}

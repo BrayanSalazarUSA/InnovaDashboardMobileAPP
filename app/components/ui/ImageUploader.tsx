@@ -68,6 +68,8 @@ export default function ImageUploader({
         console.log("📸 Imagen local seleccionada:", a.uri);
         return {
           uri: a.uri,
+          type: a.mimeType || "image/jpeg",
+          name: a.fileName || `evidence_${Date.now()}.jpg`,
           isRemote: false,
         };
       });

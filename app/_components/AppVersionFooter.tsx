@@ -1,7 +1,7 @@
 import React from "react";
 import { Text, View } from "react-native";
 
-import { getAppVersionLabel } from "../_lib/diagnostics";
+import { getAppVersionLabel } from "../../utils/diagnostics";
 
 export default function AppVersionFooter({
   compact = false,

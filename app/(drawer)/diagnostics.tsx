@@ -16,7 +16,14 @@ import {
   clearDiagnosticEntries,
   DiagnosticEntry,
   getDiagnosticEntries,
-} from "../_lib/diagnostics";
+  getAppVersionLabel,
+} from "../../utils/diagnostics";
+import {
+  getStoredDeviceIdAsync,
+  getStoredDeviceNameAsync,
+} from "../../utils/deviceIdentity";
+import { getStoredExpoPushTokenAsync } from "../../utils/pushNotifications";
+import resolveApiBaseUrl from "../../utils/apiBaseUrl";
 
 function formatTimestamp(value: string) {
   return new Date(value).toLocaleString("es-CO", {
@@ -45,11 +52,24 @@ export default function DiagnosticsScreen() {
   const [entries, setEntries] = useState<DiagnosticEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [pushToken, setPushToken] = useState<string | null>(null);
+  const [deviceId, setDeviceId] = useState<string | null>(null);
+  const [deviceName, setDeviceName] = useState<string | null>(null);
 
   const loadEntries = useCallback(async () => {
     try {
-      const nextEntries = await getDiagnosticEntries();
+      const [nextEntries, storedToken, storedDeviceId, storedDeviceName] =
+        await Promise.all([
+        getDiagnosticEntries(),
+        getStoredExpoPushTokenAsync(),
+        getStoredDeviceIdAsync(),
+        getStoredDeviceNameAsync(),
+      ]);
+
       setEntries(nextEntries);
+      setPushToken(storedToken);
+      setDeviceId(storedDeviceId);
+      setDeviceName(storedDeviceName);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -110,30 +130,6 @@ export default function DiagnosticsScreen() {
           </View>
         </View>
 
-        <View className="mt-4 rounded-[22px] border border-[#E5E7EB] bg-[#F8FAFC] p-4">
-          <Text className="text-sm leading-6 text-[#475569]">
-            Por ahora solo se guardan errores locales del dispositivo. Si luego
-            quieres centralizarlos, conectamos esta misma bitacora a un endpoint
-            del backend y los enviamos al servidor.
-          </Text>
-        </View>
-
-        <View className="mt-4 flex-row gap-3">
-          <TouchableOpacity
-            onPress={handleRefresh}
-            className="flex-1 flex-row items-center justify-center rounded-[20px] border border-[#D7DCE5] bg-white py-4"
-          >
-            <Ionicons name="refresh-outline" size={18} color="#475569" />
-            <Text className="ml-2 font-semibold text-[#475569]">Actualizar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleClear}
-            className="flex-1 flex-row items-center justify-center rounded-[20px] border border-[#F3C7C7] bg-[#FFF4F4] py-4"
-          >
-            <Ionicons name="trash-outline" size={18} color="#B42318" />
-            <Text className="ml-2 font-semibold text-[#B42318]">Limpiar</Text>
-          </TouchableOpacity>
-        </View>
       </View>
 
       <View className="mt-5 rounded-[28px] border border-[#E7DFC4] bg-white p-5">
@@ -206,6 +202,75 @@ export default function DiagnosticsScreen() {
             );
           })
         )}
+      </View>
+
+      <View className="mt-5 rounded-[28px] border border-[#D8E4F3] bg-white p-5">
+        <View className="mb-4 flex-row items-center justify-between">
+          <Text className="text-lg font-semibold text-[#111827]">
+            Estado tecnico
+          </Text>
+          <Text className="text-sm text-[#64748B]">
+            Para validar pushes y backend
+          </Text>
+        </View>
+
+        <View className="space-y-3">
+          <View className="rounded-[20px] bg-[#F8FAFC] px-4 py-3 border border-[#E2E8F0]">
+            <Text className="text-xs uppercase tracking-[0.16em] text-[#64748B]">
+              Version actual
+            </Text>
+            <Text className="mt-1 text-sm font-semibold text-[#0F172A]">
+              {getAppVersionLabel()}
+            </Text>
+          </View>
+
+          <View className="rounded-[20px] bg-[#F8FAFC] px-4 py-3 border border-[#E2E8F0]">
+            <Text className="text-xs uppercase tracking-[0.16em] text-[#64748B]">
+              Backend activo
+            </Text>
+            <Text className="mt-1 text-sm font-semibold text-[#0F172A]">
+              {resolveApiBaseUrl()}
+            </Text>
+          </View>
+
+          <View className="rounded-[20px] bg-[#F8FAFC] px-4 py-3 border border-[#E2E8F0]">
+            <Text className="text-xs uppercase tracking-[0.16em] text-[#64748B]">
+              Token guardado en el celular
+            </Text>
+            <Text className="mt-1 text-sm font-semibold text-[#0F172A]">
+              {pushToken || "No registrado todavia"}
+            </Text>
+          </View>
+
+          <View className="rounded-[20px] bg-[#F8FAFC] px-4 py-3 border border-[#E2E8F0]">
+            <Text className="text-xs uppercase tracking-[0.16em] text-[#64748B]">
+              Nombre del dispositivo
+            </Text>
+            <Text className="mt-1 text-sm font-semibold text-[#0F172A]">
+              {deviceName || "Pendiente de configurar"}
+            </Text>
+            <Text className="mt-1 text-[11px] text-[#94A3B8]">
+              {deviceId || "Sin identificador local"}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View className="mt-4 flex-row gap-3">
+        <TouchableOpacity
+          onPress={handleRefresh}
+          className="flex-1 flex-row items-center justify-center rounded-[20px] border border-[#D7DCE5] bg-white py-4"
+        >
+          <Ionicons name="refresh-outline" size={18} color="#475569" />
+          <Text className="ml-2 font-semibold text-[#475569]">Actualizar</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={handleClear}
+          className="flex-1 flex-row items-center justify-center rounded-[20px] border border-[#F3C7C7] bg-[#FFF4F4] py-4"
+        >
+          <Ionicons name="trash-outline" size={18} color="#B42318" />
+          <Text className="ml-2 font-semibold text-[#B42318]">Limpiar</Text>
+        </TouchableOpacity>
       </View>
 
       <AppVersionFooter />
