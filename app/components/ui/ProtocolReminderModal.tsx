@@ -4,7 +4,9 @@ import {
     Image,
     Animated,
     Easing,
+    KeyboardAvoidingView,
     Modal,
+    Platform,
     Pressable,
     ScrollView,
     Text,
@@ -180,38 +182,47 @@ export default function ProtocolReminderModal({
     }
   };
 
-  return (
+    return (
     <Modal
       visible={visible}
       transparent
       animationType="slide"
       onRequestClose={onClose}
     >
-      <Animated.View
-        className="flex-1 bg-black/60 justify-center px-4"
-        style={{ opacity: introAnim }}
+      <KeyboardAvoidingView
+        className="flex-1"
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <Pressable
-          onPress={onClose}
-          style={{ position: "absolute", inset: 0 }}
-        />
-
         <Animated.View
-          className="rounded-[28px] bg-white px-4 py-4 shadow-xl max-h-[84%] border border-[#E5E7EB]"
-          style={{
-            opacity: cardAnim,
-            transform: [
-              {
-                translateY: cardAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [18, 0],
-                }),
-              },
-              { scale: titleScale },
-            ],
-          }}
+          className="flex-1 bg-black/60 justify-center px-4"
+          style={{ opacity: introAnim }}
         >
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <Pressable
+            onPress={onClose}
+            style={{ position: "absolute", inset: 0 }}
+          />
+
+          <Animated.View
+            className="rounded-[28px] bg-white px-4 py-4 shadow-xl max-h-[84%] border border-[#E5E7EB]"
+            style={{
+              opacity: cardAnim,
+              transform: [
+                {
+                  translateY: cardAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [18, 0],
+                  }),
+                },
+                { scale: titleScale },
+              ],
+            }}
+          >
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            contentContainerStyle={{ paddingBottom: 32 }}
+          >
             <View className="mb-4 rounded-[26px] border border-[#DBEAFE] bg-[#F8FBFF] p-4">
               <View className="flex-row items-start gap-3">
                 <View className="h-12 w-12 items-center justify-center rounded-2xl bg-[#EFF6FF] border border-[#BFDBFE]">
@@ -353,7 +364,7 @@ export default function ProtocolReminderModal({
               </TouchableOpacity>
             </View>
           </ScrollView>
-        </Animated.View>
+          </Animated.View>
 
         {showSuccessState ? (
           <Animated.View
@@ -552,7 +563,8 @@ export default function ProtocolReminderModal({
             </TouchableWithoutFeedback>
           </View>
         </Modal>
-      </Animated.View>
+        </Animated.View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

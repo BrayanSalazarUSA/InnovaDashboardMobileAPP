@@ -7,6 +7,7 @@ const API_URL = resolveApiBaseUrl().replace(/\/$/, "");
 type RequestOptions = {
   userId?: number | string | null;
   role?: string;
+  deviceId?: string | null;
 };
 
 function authHeaders(options: RequestOptions = {}) {
@@ -58,8 +59,9 @@ export type ProtocolExecutionResponse = {
 
 export const ProtocolsApi = {
   async recentResponses(hours = 24, options?: RequestOptions) {
+    const deviceQuery = options?.deviceId ? `&deviceId=${encodeURIComponent(String(options.deviceId))}` : "";
     const response = await fetchWithRetry(
-      `${API_URL}/protocols/executions/recent?hours=${hours}`,
+      `${API_URL}/protocols/executions/recent?hours=${hours}${deviceQuery}`,
       {
         method: "GET",
         headers: authHeaders(options),
