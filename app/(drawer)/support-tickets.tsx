@@ -7,7 +7,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import * as Clipboard from "expo-clipboard";
 import { LinearGradient } from "expo-linear-gradient";
-import { MotiView } from "moti";
+import AdaptiveMotionView from "@/components/ui/AdaptiveMotionView";
 import React, { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -305,7 +305,7 @@ function FeedbackModal({
         className="flex-1 justify-center px-6"
         style={{ backgroundColor: "rgba(15, 23, 42, 0.35)" }}
       >
-        <MotiView
+        <AdaptiveMotionView
           from={{ opacity: 0, scale: 0.94, translateY: 14 }}
           animate={{ opacity: 1, scale: 1, translateY: 0 }}
           transition={{ type: "timing", duration: 240 }}
@@ -358,7 +358,7 @@ function FeedbackModal({
               </TouchableOpacity>
             </LinearGradient>
           </View>
-        </MotiView>
+        </AdaptiveMotionView>
       </View>
     </Modal>
   );

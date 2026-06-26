@@ -1,0 +1,22 @@
+import React from "react";
+import { View, type ViewProps } from "react-native";
+import { MotiView } from "moti";
+
+type Props = React.PropsWithChildren<
+  ViewProps & {
+    from?: Record<string, unknown>;
+    animate?: Record<string, unknown>;
+    transition?: Record<string, unknown>;
+  }
+>;
+
+export default function AdaptiveMotionView({
+  children,
+  ...props
+}: Props) {
+  return (
+    <MotiView {...(props as never)}>
+      {children}
+    </MotiView>
+  );
+}

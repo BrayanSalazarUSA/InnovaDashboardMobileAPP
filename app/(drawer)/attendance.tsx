@@ -11,7 +11,7 @@ import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
-import { MotiView } from "moti";
+import AdaptiveMotionView from "@/components/ui/AdaptiveMotionView";
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -453,7 +453,7 @@ function SuccessFeedbackModal({
         className="flex-1 justify-center px-6"
         style={{ backgroundColor: "rgba(15, 23, 42, 0.35)" }}
       >
-        <MotiView
+        <AdaptiveMotionView
           from={{ opacity: 0, scale: 0.92, translateY: 18 }}
           animate={{ opacity: 1, scale: 1, translateY: 0 }}
           transition={{ type: "timing", duration: 280 }}
@@ -470,7 +470,7 @@ function SuccessFeedbackModal({
                   className="w-full items-center justify-center"
                   style={{ height: 150 }}
                 >
-                  <MotiView
+                  <AdaptiveMotionView
                     from={{ scale: 0.8, opacity: 0.25 }}
                     animate={{ scale: 1.35, opacity: 0 }}
                     transition={{
@@ -481,7 +481,7 @@ function SuccessFeedbackModal({
                     }}
                     className="absolute w-28 h-28 rounded-full bg-[#86EFAC]"
                   />
-                  <MotiView
+                  <AdaptiveMotionView
                     from={{ scale: 0.88, rotate: "-10deg" }}
                     animate={{ scale: 1, rotate: "0deg" }}
                     transition={{ type: "spring", damping: 12, mass: 0.8 }}
@@ -505,7 +505,7 @@ function SuccessFeedbackModal({
                     >
                       <Ionicons name="checkmark" size={48} color="#FFFFFF" />
                     </LinearGradient>
-                  </MotiView>
+                  </AdaptiveMotionView>
                 </View>
 
                 <Text className="text-[28px] leading-[32px] font-semibold text-[#111827] text-center">
@@ -553,7 +553,7 @@ function SuccessFeedbackModal({
               </TouchableOpacity>
             </LinearGradient>
           </View>
-        </MotiView>
+        </AdaptiveMotionView>
       </View>
     </Modal>
   );
@@ -590,7 +590,7 @@ function SecurityCodeModal({
         className="flex-1 justify-center px-6"
         style={{ backgroundColor: "rgba(15, 23, 42, 0.38)" }}
       >
-        <MotiView
+        <AdaptiveMotionView
           from={{ opacity: 0, scale: 0.96, translateY: 12 }}
           animate={{ opacity: 1, scale: 1, translateY: 0 }}
           transition={{ type: "timing", duration: 220 }}
@@ -675,7 +675,7 @@ function SecurityCodeModal({
               </View>
             </LinearGradient>
           </View>
-        </MotiView>
+        </AdaptiveMotionView>
       </View>
     </Modal>
   );
