@@ -1,1 +1,1 @@
-export { default } from "@/components/ui/IncidentLocationsViewer";
+export { default } from "@/components/ui/IncidentLocationsViewer.web";
