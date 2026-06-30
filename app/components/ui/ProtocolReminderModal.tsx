@@ -21,6 +21,8 @@ type Protocol = {
   id: string;
   title: string;
   description?: string;
+  scheduledFor?: string;
+  scheduledTimeZone?: string;
 };
 
 type Monitor = {
@@ -35,7 +37,11 @@ type Props = {
   onClose: () => void;
   protocol: Protocol;
   monitors: Monitor[];
-  onSave: (answer: "sí" | "no", note: string, respondedBy: string) => void;
+  onSave: (
+    answer: "sí" | "no",
+    note: string,
+    respondedBy: string,
+  ) => Promise<void>;
 };
 
 export default function ProtocolReminderModal({
@@ -54,6 +60,7 @@ export default function ProtocolReminderModal({
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showSuccessState, setShowSuccessState] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const introAnim = useRef(new Animated.Value(0)).current;
   const cardAnim = useRef(new Animated.Value(0)).current;
   const titleScale = useRef(new Animated.Value(0.98)).current;
@@ -75,6 +82,21 @@ export default function ProtocolReminderModal({
   };
 
   const formattedTime = useMemo(() => currentTime, [currentTime]);
+  const scheduledTimeLabel = useMemo(() => {
+    if (!protocol.scheduledFor) {
+      return null;
+    }
+
+    const scheduledDate = new Date(protocol.scheduledFor);
+    if (Number.isNaN(scheduledDate.getTime())) {
+      return null;
+    }
+
+    return scheduledDate.toLocaleTimeString("es-CO", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }, [protocol.scheduledFor]);
 
   useEffect(() => {
     if (visible) {
@@ -86,6 +108,7 @@ export default function ProtocolReminderModal({
       setShowConfirmModal(false);
       setShowSuccessState(false);
       setIsSubmitting(false);
+      setErrorMessage(null);
       clearPendingTimers();
       // Actualizar la hora actual
       const now = new Date();
@@ -145,41 +168,63 @@ export default function ProtocolReminderModal({
   };
 
   const handleConfirmResponsable = () => {
-    if (selectedMonitor && answer && !isSubmitting) {
-      setIsSubmitting(true);
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setShowConfirmModal(false);
-      setShowResponsableModal(false);
-      setShowSuccessState(true);
-
-      Animated.parallel([
-        Animated.spring(successScale, {
-          toValue: 1,
-          tension: 90,
-          friction: 7,
-          useNativeDriver: true,
-        }),
-        Animated.timing(successOpacity, {
-          toValue: 1,
-          duration: 180,
-          easing: Easing.out(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]).start();
-
-      void onSave(answer, note.trim(), selectedMonitor.name);
-
-      confirmTimeoutRef.current = setTimeout(() => {
-        onClose();
-        confirmTimeoutRef.current = null;
-      }, 220);
-
-      successTimeoutRef.current = setTimeout(() => {
-        setShowSuccessState(false);
-        setIsSubmitting(false);
-        successTimeoutRef.current = null;
-      }, 900);
+    if (!selectedMonitor || !answer || isSubmitting) {
+      return;
     }
+
+    const run = async () => {
+      setIsSubmitting(true);
+      setErrorMessage(null);
+
+      try {
+        await onSave(answer, note.trim(), selectedMonitor.name);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setShowConfirmModal(false);
+        setShowResponsableModal(false);
+        setShowSuccessState(true);
+
+        Animated.parallel([
+          Animated.spring(successScale, {
+            toValue: 1,
+            tension: 90,
+            friction: 7,
+            useNativeDriver: true,
+          }),
+          Animated.timing(successOpacity, {
+            toValue: 1,
+            duration: 180,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]).start();
+
+        confirmTimeoutRef.current = setTimeout(() => {
+          onClose();
+          confirmTimeoutRef.current = null;
+        }, 700);
+
+        successTimeoutRef.current = setTimeout(() => {
+          setShowSuccessState(false);
+          successTimeoutRef.current = null;
+        }, 900);
+      } catch (error) {
+        const rawMessage = error instanceof Error ? error.message : String(error);
+        const normalizedMessage = /not pending for this device/i.test(rawMessage)
+          ? "Este protocolo ya no está pendiente para este dispositivo. Recarga la pantalla y prueba con el siguiente evento."
+          : /HTTP\s+(409|500)\b/i.test(rawMessage)
+            ? "El backend rechazó la respuesta de este protocolo. Puede que ya no esté pendiente o que haya cambiado su estado."
+          : rawMessage || "No se pudo guardar la respuesta del protocolo.";
+
+        setErrorMessage(normalizedMessage);
+        setShowSuccessState(false);
+        setShowConfirmModal(false);
+        setShowResponsableModal(false);
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+
+    void run();
   };
 
     return (
@@ -239,6 +284,11 @@ export default function ProtocolReminderModal({
                     {protocol.description ||
                       "Responde el protocolo desde este formulario y deja el registro al instante."}
                   </Text>
+                  {scheduledTimeLabel ? (
+                    <Text className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#1D4ED8]">
+                      Hora programada {scheduledTimeLabel}
+                    </Text>
+                  ) : null}
                 </View>
               </View>
 
@@ -246,11 +296,11 @@ export default function ProtocolReminderModal({
                 <View className="flex-row items-center gap-2">
                   <View className="h-2.5 w-2.5 rounded-full bg-[#22C55E]" />
                   <Text className="text-sm font-medium text-[#374151]">
-                    Disponible para responder ahora
+                    {scheduledTimeLabel ? "Disponible desde esa hora" : "Disponible para responder ahora"}
                   </Text>
                 </View>
                 <Text className="text-xs font-semibold text-[#1D4ED8]">
-                  {formattedTime}
+                  {scheduledTimeLabel || formattedTime}
                 </Text>
               </View>
             </View>
@@ -332,6 +382,17 @@ export default function ProtocolReminderModal({
               />
             </View>
 
+            {errorMessage ? (
+              <View className="mb-4 rounded-[22px] border border-[#FECACA] bg-[#FEF2F2] px-4 py-3">
+                <Text className="text-sm font-semibold text-[#B91C1C]">
+                  No se pudo guardar la respuesta
+                </Text>
+                <Text className="mt-1 text-sm leading-5 text-[#7F1D1D]">
+                  {errorMessage}
+                </Text>
+              </View>
+            ) : null}
+
             {/* Botones de acción */}
             <View className="flex-row gap-3 mt-1 mb-2">
               <TouchableOpacity
@@ -344,22 +405,26 @@ export default function ProtocolReminderModal({
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleSendClick}
-                disabled={!readyToSelectResponsable}
+                disabled={!readyToSelectResponsable || isSubmitting}
                 className={`flex-1 rounded-2xl px-4 py-3 flex-row items-center justify-center ${
-                  readyToSelectResponsable ? "bg-[#006bb3]" : "bg-[#D1D5DB]"
+                  readyToSelectResponsable && !isSubmitting
+                    ? "bg-[#006bb3]"
+                    : "bg-[#D1D5DB]"
                 }`}
               >
                 <Ionicons
                   name="send"
                   size={18}
-                  color={readyToSelectResponsable ? "white" : "#9CA3AF"}
+                  color={readyToSelectResponsable && !isSubmitting ? "white" : "#9CA3AF"}
                 />
                 <Text
                   className={`text-center font-semibold ml-2 text-sm ${
-                    readyToSelectResponsable ? "text-white" : "text-[#9CA3AF]"
+                    readyToSelectResponsable && !isSubmitting
+                      ? "text-white"
+                      : "text-[#9CA3AF]"
                   }`}
                 >
-                  Enviar Respuesta
+                  {isSubmitting ? "Guardando..." : "Enviar Respuesta"}
                 </Text>
               </TouchableOpacity>
             </View>

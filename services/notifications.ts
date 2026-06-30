@@ -1,8 +1,8 @@
-import resolveApiBaseUrl from "@/utils/apiBaseUrl";
 import { fetchWithRetry } from "@/utils/fetchWithRetry";
+import { resolveApiBaseUrl } from "@/utils/apiBaseUrl";
 import { MONITOR_ROLE, MONITOR_USER_ID } from "@/utils/monitorIdentity";
 
-const API_URL = resolveApiBaseUrl().replace(/\/$/, "");
+const API_URL = resolveApiBaseUrl();
 
 type RequestOptions = {
   userId?: number | string | null;

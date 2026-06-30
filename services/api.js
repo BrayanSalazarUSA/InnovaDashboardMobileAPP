@@ -1,6 +1,6 @@
 import { runWithCacheFallback } from "@/utils/apiCache";
-import resolveApiBaseUrl from "@/utils/apiBaseUrl";
 import { fetchWithRetry } from "@/utils/fetchWithRetry";
+import { resolveApiBaseUrl } from "@/utils/apiBaseUrl";
 
 const API_URL = resolveApiBaseUrl();
 const CATALOG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;

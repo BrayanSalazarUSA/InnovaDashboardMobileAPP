@@ -1,98 +1,77 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
-const PRODUCTION_API_URL = "https://innova-dashboard.com:443/api";
-const RAW_REMOTE_API_URL =
-  process.env.EXPO_PUBLIC_SERVER_IP || PRODUCTION_API_URL;
-const RAW_LOCAL_API_URL =
-  process.env.EXPO_PUBLIC_LOCAL_SERVER_IP || "http://localhost:8080/api";
-const USE_LOCAL_API = process.env.EXPO_PUBLIC_USE_LOCAL_API === "true";
+const DEFAULT_REMOTE_API_URL = "https://innova-dashboard.com:443/api";
 
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
-
-function trimTrailingSlash(value) {
-  return value.replace(/\/$/, "");
-}
-
-function extractHostname(candidate) {
-  if (!candidate || typeof candidate !== "string") {
+function normalizeUrl(value) {
+  if (!value || typeof value !== "string") {
     return null;
   }
 
-  const normalized = candidate.includes("://")
-    ? candidate
-    : `exp://${candidate}`;
+  return value.trim().replace(/\/$/, "");
+}
 
+function extractHost(value) {
+  if (!value || typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const candidate = trimmed.includes("://") ? trimmed : `http://${trimmed}`;
   try {
-    return new URL(normalized).hostname || null;
+    return new URL(candidate).hostname;
   } catch {
-    return candidate.split(":")[0] || null;
+    return trimmed.split(":")[0] || null;
   }
 }
 
-function getExpoDevHostname() {
-  const candidates = [
-    Constants.expoConfig?.hostUri,
-    Constants.expoGoConfig?.debuggerHost,
-    Constants.manifest?.debuggerHost,
-    Constants.manifest2?.extra?.expoClient?.hostUri,
-    Constants.experienceUrl,
-    Constants.linkingUri,
-  ];
-
-  for (const candidate of candidates) {
-    const host = extractHostname(candidate);
-    if (host) {
-      return host;
-    }
+function isPrivateNetworkHost(host) {
+  if (!host) return false;
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
+    return true;
   }
 
-  return null;
+  if (/^10\.\d+\.\d+\.\d+$/.test(host)) return true;
+  if (/^192\.168\.\d+\.\d+$/.test(host)) return true;
+
+  const match = host.match(/^172\.(\d+)\.\d+\.\d+$/);
+  if (!match) return false;
+
+  const secondOctet = Number(match[1]);
+  return secondOctet >= 16 && secondOctet <= 31;
 }
 
-function isLocalUrl(candidate) {
-  try {
-    return LOCAL_HOSTS.has(new URL(candidate).hostname);
-  } catch {
-    return false;
-  }
+function getExpoHost() {
+  const manifestHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.debuggerHost ||
+    Constants.manifest?.debuggerHost ||
+    null;
+
+  return extractHost(manifestHost);
 }
 
-function resolveCandidateUrl(candidate) {
-  if (Platform.OS === "web") {
-    return trimTrailingSlash(candidate);
+export function resolveApiBaseUrl() {
+  const envUrl = normalizeUrl(process.env.EXPO_PUBLIC_API_BASE_URL);
+  const expoHost = getExpoHost();
+  const expoGoMode = Constants.appOwnership === "expo" || Platform.OS !== "web";
+
+  if (expoGoMode && expoHost && (!envUrl || isPrivateNetworkHost(extractHost(envUrl)))) {
+    return `http://${expoHost}:8080/api`;
   }
 
-  try {
-    const url = new URL(candidate);
-
-    if (!LOCAL_HOSTS.has(url.hostname)) {
-      return trimTrailingSlash(candidate);
-    }
-
-    const expoHost = getExpoDevHostname();
-
-    if (!expoHost) {
-      return trimTrailingSlash(candidate);
-    }
-
-    url.hostname = expoHost;
-    return trimTrailingSlash(url.toString());
-  } catch {
-    return trimTrailingSlash(candidate);
+  if (envUrl) {
+    return envUrl;
   }
+
+  if (expoHost) {
+    return `http://${expoHost}:8080/api`;
+  }
+
+  return DEFAULT_REMOTE_API_URL;
 }
 
-export function getApiBaseUrl() {
-  if (USE_LOCAL_API) {
-    return resolveCandidateUrl(RAW_LOCAL_API_URL);
-  }
-
-  const safeRemoteUrl = isLocalUrl(RAW_REMOTE_API_URL)
-    ? PRODUCTION_API_URL
-    : RAW_REMOTE_API_URL;
-
-  return resolveCandidateUrl(safeRemoteUrl);
-}
-
-export default getApiBaseUrl;

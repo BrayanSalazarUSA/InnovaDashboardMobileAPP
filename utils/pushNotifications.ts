@@ -3,7 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
 const STORED_TOKEN_KEY = "innova_expo_push_token";
-export const PROTOCOL_ALERTS_CHANNEL_ID = "protocol-alerts-v2";
+export const PROTOCOL_ALERTS_CHANNEL_ID = "protocol-alerts-v3";
 export const PROTOCOL_ALERT_SOUND = "protocol-rington.wav";
 
 type NotificationsModule = typeof import("expo-notifications");
@@ -87,7 +87,7 @@ export async function ensureAndroidNotificationChannelAsync() {
   await Notifications.setNotificationChannelAsync(PROTOCOL_ALERTS_CHANNEL_ID, {
     name: "Recordatorios de protocolos",
     importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
+    vibrationPattern: [0, 450, 180, 450, 180, 650],
     lightColor: "#C9A13B",
     sound: PROTOCOL_ALERT_SOUND,
   });
@@ -175,6 +175,8 @@ export type ProtocolReminderNotificationPayload = ExpoPushNotificationPayload & 
     protocolExecutionId: string;
     protocolTitle: string;
     protocolDescription: string;
+    protocolScheduledFor?: string;
+    protocolScheduledTimeZone?: string;
   };
 };
 
@@ -183,6 +185,8 @@ export function buildProtocolReminderNotificationPayload(options: {
   protocolExecutionId?: string;
   protocolTitle?: string;
   protocolDescription?: string;
+  protocolScheduledFor?: string;
+  protocolScheduledTimeZone?: string;
   ttl?: number;
 } = {}): ProtocolReminderNotificationPayload {
   const protocolExecutionId =
@@ -210,6 +214,8 @@ export function buildProtocolReminderNotificationPayload(options: {
       protocolExecutionId,
       protocolTitle,
       protocolDescription,
+      protocolScheduledFor: options.protocolScheduledFor,
+      protocolScheduledTimeZone: options.protocolScheduledTimeZone,
     },
   };
 }

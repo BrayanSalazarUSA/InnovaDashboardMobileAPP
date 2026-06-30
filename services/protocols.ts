@@ -1,13 +1,15 @@
-import resolveApiBaseUrl from "@/utils/apiBaseUrl";
 import { fetchWithRetry } from "@/utils/fetchWithRetry";
+import { resolveApiBaseUrl } from "@/utils/apiBaseUrl";
 import { MONITOR_ROLE, MONITOR_USER_ID } from "@/utils/monitorIdentity";
 
-const API_URL = resolveApiBaseUrl().replace(/\/$/, "");
+const API_URL = resolveApiBaseUrl();
 
 type RequestOptions = {
   userId?: number | string | null;
   role?: string;
   deviceId?: string | null;
+  expoPushToken?: string | null;
+  deviceName?: string | null;
 };
 
 function authHeaders(options: RequestOptions = {}) {
@@ -31,7 +33,10 @@ async function parseResponse(response: Response) {
   if (!response.ok) {
     const message =
       typeof data === "string" ? data : data?.message || JSON.stringify(data);
-    throw new Error(message || `HTTP ${response.status}`);
+    const error = new Error(message || `HTTP ${response.status}`);
+    error.name = "ProtocolApiError";
+    error.message = `HTTP ${response.status}: ${error.message}`;
+    throw error;
   }
 
   return data;
@@ -50,6 +55,8 @@ export type ProtocolExecutionResponse = {
   responseNote?: string;
   respondedByName?: string;
   respondedById?: number;
+  respondedByDeviceName?: string;
+  respondedByDeviceId?: string;
   respondedAt?: string;
   reminderCount?: number;
   lastReminderAt?: string;
@@ -60,8 +67,14 @@ export type ProtocolExecutionResponse = {
 export const ProtocolsApi = {
   async recentResponses(hours = 24, options?: RequestOptions) {
     const deviceQuery = options?.deviceId ? `&deviceId=${encodeURIComponent(String(options.deviceId))}` : "";
+    const tokenQuery = options?.expoPushToken
+      ? `&expoPushToken=${encodeURIComponent(String(options.expoPushToken))}`
+      : "";
+    const deviceNameQuery = options?.deviceName
+      ? `&deviceName=${encodeURIComponent(String(options.deviceName))}`
+      : "";
     const response = await fetchWithRetry(
-      `${API_URL}/protocols/executions/recent?hours=${hours}${deviceQuery}`,
+      `${API_URL}/protocols/executions/recent?hours=${hours}${deviceQuery}${tokenQuery}${deviceNameQuery}`,
       {
         method: "GET",
         headers: authHeaders(options),
@@ -78,6 +91,8 @@ export const ProtocolsApi = {
       responseNote?: string;
       responderName?: string;
       deviceId?: string;
+      expoPushToken?: string;
+      deviceName?: string;
     },
     options?: RequestOptions,
   ) {

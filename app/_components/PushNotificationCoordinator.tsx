@@ -10,12 +10,14 @@ import {
   getExpoPushTokenAsync,
   getNotificationsModule,
 } from "../../utils/pushNotifications";
-import resolveApiBaseUrl from "../../utils/apiBaseUrl";
 import {
   getDeviceIdentityAsync,
   storeDeviceNameAsync,
 } from "../../utils/deviceIdentity";
+import { resolveApiBaseUrl } from "../../utils/apiBaseUrl";
 import { MONITOR_USER_ID } from "../../utils/monitorIdentity";
+
+const API_URL = resolveApiBaseUrl();
 
 async function registerTokenWithBackend(params: {
   token: string;
@@ -29,7 +31,7 @@ async function registerTokenWithBackend(params: {
   });
 
   const response = await fetch(
-    `${resolveApiBaseUrl().replace(/\/$/, "")}/mobile/push-token`,
+    `${API_URL.replace(/\/$/, "")}/mobile/push-token`,
     {
       method: "POST",
       headers: {
@@ -68,6 +70,8 @@ type NotificationPayload = {
   protocolDescription?: string;
   protocolExecutionId?: string;
   notificationId?: string;
+  protocolScheduledFor?: string;
+  protocolScheduledTimeZone?: string;
 };
 
 function buildProtocolRoute(data?: NotificationPayload, notificationKey?: string) {
@@ -75,9 +79,9 @@ function buildProtocolRoute(data?: NotificationPayload, notificationKey?: string
     data?.kind === "protocol_reminder" ||
     Boolean(data?.route) ||
     Boolean(data?.openProtocolModal) ||
-    Boolean(data?.protocolTitle) ||
-    Boolean(data?.protocolDescription) ||
-    Boolean(data?.protocolExecutionId);
+      Boolean(data?.protocolTitle) ||
+      Boolean(data?.protocolDescription) ||
+      Boolean(data?.protocolExecutionId);
 
   if (!shouldOpenProtocol) {
     return null;
@@ -93,6 +97,12 @@ function buildProtocolRoute(data?: NotificationPayload, notificationKey?: string
         : undefined,
       protocolExecutionId: data?.protocolExecutionId
         ? String(data.protocolExecutionId)
+        : undefined,
+      protocolScheduledFor: data?.protocolScheduledFor
+        ? String(data.protocolScheduledFor)
+        : undefined,
+      protocolScheduledTimeZone: data?.protocolScheduledTimeZone
+        ? String(data.protocolScheduledTimeZone)
         : undefined,
       notificationId: notificationKey
         ? String(notificationKey)

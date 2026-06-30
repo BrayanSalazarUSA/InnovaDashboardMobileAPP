@@ -1,7 +1,7 @@
-import resolveApiBaseUrl from "@/utils/apiBaseUrl";
 import { fetchWithRetry } from "@/utils/fetchWithRetry";
+import { resolveApiBaseUrl } from "@/utils/apiBaseUrl";
 
-const API_URL = resolveApiBaseUrl().replace(/\/$/, "");
+const API_URL = resolveApiBaseUrl();
 
 export type SupportTicketCategory =
   | "COMPUTER"

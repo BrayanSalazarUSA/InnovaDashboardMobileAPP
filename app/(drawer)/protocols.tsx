@@ -1,6 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   ActivityIndicator,
   Animated,
   FlatList,
@@ -19,7 +20,8 @@ import "../../global.css";
 import AppVersionFooter from "../_components/AppVersionFooter";
 import ProtocolReminderModal from "../components/ui/ProtocolReminderModal";
 import { recordDiagnostic } from "../../utils/diagnostics";
-import { getStoredDeviceIdAsync } from "../../utils/deviceIdentity";
+import { getDeviceIdentityAsync } from "../../utils/deviceIdentity";
+import { getStoredExpoPushTokenAsync } from "../../utils/pushNotifications";
 import { MONITOR_ROLE, MONITOR_USER_ID } from "../../utils/monitorIdentity";
 
 function formatDateTime(value?: string) {
@@ -45,95 +47,21 @@ type ReminderProtocol = {
   id: string;
   title: string;
   description?: string;
+  scheduledFor?: string;
+  scheduledTimeZone?: string;
 };
 
-const USE_MOCK_TIMELINE = false;
+type ResponseDisplayOverride = {
+  respondedByName?: string;
+  respondedByDeviceId?: string;
+  respondedByDeviceName?: string;
+};
 
-function atToday(hour: number, minute = 0) {
-  const date = new Date();
-  date.setHours(hour, minute, 0, 0);
-  return date.toISOString();
-}
-
-const MOCK_MONITORS: Monitor[] = [
-  { id: 2, name: "Alexis Salazar", image: "profiles/alexis.webp" },
-  { id: 12, name: "Danny Lopez", image: "profiles/danny.webp" },
-  { id: 18, name: "Alejandra Grajales", image: "profiles/alejandra.webp" },
-  { id: 26, name: "Maria Fernanda", image: "profiles/maria.webp" },
-];
-
-const MOCK_TIMELINE: ProtocolExecutionResponse[] = [
-  {
-    id: 90101,
-    protocolId: 1001,
-    protocolTitle: "Escaneo de propiedades",
-    content: "Revisar propiedades y dejar evidencia del recorrido.",
-    scheduledFor: atToday(8, 0),
-    status: "ANSWERED",
-    responseValue: "YES",
-    responseNote: "Escaneo realizado sin novedades.",
-    respondedByName: "Alexis Salazar",
-    respondedAt: atToday(8, 8),
-    reminderCount: 1,
-    lastReminderAt: atToday(7, 58),
-  },
-  {
-    id: 90102,
-    protocolId: 1001,
-    protocolTitle: "Escaneo de propiedades",
-    content: "Revisar propiedades y dejar evidencia del recorrido.",
-    scheduledFor: atToday(10, 0),
-    status: "PENDING",
-    reminderCount: 2,
-    lastReminderAt: atToday(9, 55),
-  },
-  {
-    id: 90103,
-    protocolId: 1001,
-    protocolTitle: "Escaneo de propiedades",
-    content: "Revisar propiedades y dejar evidencia del recorrido.",
-    scheduledFor: atToday(12, 0),
-    status: "ANSWERED",
-    responseValue: "YES",
-    responseNote: "Todo en orden, sin incidencias.",
-    respondedByName: "Danny Lopez",
-    respondedAt: atToday(12, 9),
-    reminderCount: 1,
-    lastReminderAt: atToday(11, 58),
-  },
-  {
-    id: 90104,
-    protocolId: 1001,
-    protocolTitle: "Escaneo de propiedades",
-    content: "Revisar propiedades y dejar evidencia del recorrido.",
-    scheduledFor: atToday(14, 0),
-    status: "PENDING",
-    reminderCount: 2,
-    lastReminderAt: atToday(13, 58),
-  },
-  {
-    id: 90105,
-    protocolId: 1001,
-    protocolTitle: "Escaneo de propiedades",
-    content: "Revisar propiedades y dejar evidencia del recorrido.",
-    scheduledFor: atToday(16, 0),
-    status: "PENDING",
-    reminderCount: 1,
-    lastReminderAt: atToday(15, 58),
-  },
-  {
-    id: 90106,
-    protocolId: 1001,
-    protocolTitle: "Escaneo de propiedades",
-    content: "Revisar propiedades y dejar evidencia del recorrido.",
-    scheduledFor: atToday(18, 0),
-    status: "PENDING",
-    reminderCount: 0,
-  },
-];
+const EARLY_RESPONSE_WINDOW_MINUTES = 60;
+const LATE_RESPONSE_GRACE_MINUTES = 180;
 
 const STATUS_META: Record<
-  ProtocolExecutionResponse["status"],
+  ProtocolExecutionResponse["status"] | "SCHEDULED",
   { label: string; color: string; bg: string; border: string; icon: keyof typeof MaterialCommunityIcons.glyphMap }
 > = {
   PENDING: {
@@ -157,10 +85,67 @@ const STATUS_META: Record<
     border: "#FCA5A5",
     icon: "close-circle-outline",
   },
+  SCHEDULED: {
+    label: "Programado",
+    color: "#1D4ED8",
+    bg: "#EFF6FF",
+    border: "#BFDBFE",
+    icon: "clock-time-four-outline",
+  },
 };
 
-function getStatusMeta(status: ProtocolExecutionResponse["status"]) {
+function getStatusMeta(status: ProtocolExecutionResponse["status"] | "SCHEDULED") {
   return STATUS_META[status] || STATUS_META.PENDING;
+}
+
+function isWithinResponseGraceWindow(item: ProtocolExecutionResponse, referenceMoment: Date) {
+  if (!item.scheduledFor) {
+    return true;
+  }
+
+  const scheduled = new Date(item.scheduledFor);
+  if (Number.isNaN(scheduled.getTime()) || Number.isNaN(referenceMoment.getTime())) {
+    return true;
+  }
+
+  const deadline = new Date(scheduled.getTime());
+  deadline.setMinutes(deadline.getMinutes() + LATE_RESPONSE_GRACE_MINUTES);
+  return referenceMoment.getTime() <= deadline.getTime();
+}
+
+function isResponseWindowNotYetOpen(item: ProtocolExecutionResponse, referenceMoment: Date) {
+  if (!item.scheduledFor) {
+    return false;
+  }
+
+  const scheduled = new Date(item.scheduledFor);
+  if (Number.isNaN(scheduled.getTime()) || Number.isNaN(referenceMoment.getTime())) {
+    return false;
+  }
+
+  const openAt = new Date(scheduled.getTime());
+  openAt.setMinutes(openAt.getMinutes() - EARLY_RESPONSE_WINDOW_MINUTES);
+  return referenceMoment.getTime() < openAt.getTime();
+}
+
+function getEffectiveStatus(item: ProtocolExecutionResponse, referenceMoment: Date = new Date()) {
+  if (item.status === "ANSWERED" || Boolean(item.responseValue) || Boolean(item.respondedAt)) {
+    return "ANSWERED";
+  }
+
+  if (isResponseWindowNotYetOpen(item, referenceMoment)) {
+    return "SCHEDULED";
+  }
+
+  if (item.status === "IGNORED" && isWithinResponseGraceWindow(item, referenceMoment)) {
+    return "PENDING";
+  }
+
+  return item.status;
+}
+
+function canOpenExecution(item: ProtocolExecutionResponse, referenceMoment: Date = new Date()) {
+  return getEffectiveStatus(item, referenceMoment) === "PENDING";
 }
 
 function getTimeLabel(value?: string) {
@@ -173,24 +158,64 @@ function getTimeLabel(value?: string) {
   });
 }
 
+function startOfLocalDay(date: Date) {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+function addDays(date: Date, delta: number) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + delta);
+  return copy;
+}
+
+function isSameLocalDay(left: Date, right: Date) {
+  return left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate();
+}
+
+function formatDaySelectorLabel(date: Date, today: Date) {
+  const normalizedDate = startOfLocalDay(date);
+  const normalizedToday = startOfLocalDay(today);
+  const diffDays = Math.round(
+    (normalizedDate.getTime() - normalizedToday.getTime()) / (1000 * 60 * 60 * 24),
+  );
+
+  if (diffDays === 0) return "Hoy";
+  if (diffDays === -1) return "Ayer";
+  if (diffDays === 1) return "Mañana";
+
+  return date.toLocaleDateString("es-CO", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+  });
+}
+
 type TimelineRowProps = {
   item: ProtocolExecutionResponse;
   onPress: (item: ProtocolExecutionResponse) => void;
 };
 
 const TimelineRow = React.memo(function TimelineRow({ item, onPress }: TimelineRowProps) {
-  const displayStatus: ProtocolExecutionResponse["status"] =
-    item.status === "ANSWERED" || Boolean(item.responseValue) || Boolean(item.respondedAt)
-      ? "ANSWERED"
-      : item.status;
+  const displayStatus = getEffectiveStatus(item);
   const statusMeta = getStatusMeta(displayStatus);
   const isAnswered = displayStatus === "ANSWERED";
   const hourLabel = getTimeLabel(item.scheduledFor);
   const helperLabel = isAnswered
-    ? `Respondido por ${item.respondedByName || "el equipo"}`
-    : displayStatus === "IGNORED"
-      ? "Aún pendiente de completar"
-      : "Toca para responder ahora";
+    ? "Respondido"
+      : displayStatus === "IGNORED"
+        ? "Vencido"
+        : displayStatus === "SCHEDULED"
+          ? `Disponible desde las ${hourLabel}`
+        : "Toca para responder ahora";
+  const responderName = item.respondedByName || "Respondido";
+  const responderDeviceName = item.respondedByDeviceName || "Dispositivo sin nombre";
+  const contentLabel = isAnswered
+    ? item.responseNote || "Sin detalle adicional."
+    : item.content || "Sin descripción registrada.";
 
   return (
     <TouchableOpacity
@@ -226,23 +251,37 @@ const TimelineRow = React.memo(function TimelineRow({ item, onPress }: TimelineR
 
       <View className="flex-1 px-4 py-4 justify-center">
         <View className="flex-row items-start justify-between gap-3">
-          <View className="flex-1 min-w-0 pr-2">
-            <Text className="text-[15px] font-bold text-[#0F172A]" numberOfLines={1}>
+          <View className="flex-1 min-w-0 pr-1">
+            <Text className="text-[15px] font-bold leading-5 text-[#0F172A]" numberOfLines={3}>
               {item.protocolTitle || "Protocolo"}
             </Text>
             <Text className="mt-1 text-sm text-[#475569]" numberOfLines={1}>
               {helperLabel}
             </Text>
-            <Text className="mt-2 text-xs text-[#64748B]" numberOfLines={1}>
-              {item.content || "Sin descripción registrada."}
-            </Text>
+            {isAnswered ? (
+              <>
+                <Text className="mt-2 text-sm font-semibold text-[#0F172A]" numberOfLines={1}>
+                  {responderName}
+                </Text>
+                <Text className="mt-1 text-xs text-[#64748B]" numberOfLines={1}>
+                  {responderDeviceName}
+                </Text>
+                <Text className="mt-1 text-xs text-[#64748B]" numberOfLines={2}>
+                  {contentLabel}
+                </Text>
+              </>
+            ) : (
+              <Text className="mt-2 text-xs text-[#64748B]" numberOfLines={1}>
+                {contentLabel}
+              </Text>
+            )}
           </View>
 
           <View
-            className="rounded-full px-3 py-2 self-start"
+            className="rounded-full px-2.5 py-1.5 self-start mt-1"
             style={{ backgroundColor: statusMeta.color }}
           >
-            <Text className="text-xs font-semibold text-white">
+            <Text className="text-[11px] font-semibold text-white">
               {statusMeta.label}
             </Text>
           </View>
@@ -260,6 +299,8 @@ export default function ProtocolsScreen() {
     protocolDescription?: string | string[];
     protocolExecutionId?: string | string[];
     notificationId?: string | string[];
+    protocolScheduledFor?: string | string[];
+    protocolScheduledTimeZone?: string | string[];
   }>();
   const [responses, setResponses] = useState<ProtocolExecutionResponse[]>([]);
   const [monitors, setMonitors] = useState<Monitor[]>([]);
@@ -272,6 +313,8 @@ export default function ProtocolsScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [currentMoment, setCurrentMoment] = useState(() => new Date());
+  const [selectedDay, setSelectedDay] = useState(() => startOfLocalDay(new Date()));
+  const [responseDisplayOverrides, setResponseDisplayOverrides] = useState<Record<number, ResponseDisplayOverride>>({});
   const lastOpenedNotificationRef = React.useRef<string | null>(null);
   const openReminderKeyRef = React.useRef<string | null>(null);
   const saveNoticeTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -286,6 +329,8 @@ export default function ProtocolsScreen() {
       protocolDescription: getValue(params.protocolDescription),
       protocolExecutionId: getValue(params.protocolExecutionId),
       notificationId: getValue(params.notificationId),
+      protocolScheduledFor: getValue(params.protocolScheduledFor),
+      protocolScheduledTimeZone: getValue(params.protocolScheduledTimeZone),
     };
   }, [params]);
 
@@ -314,23 +359,27 @@ export default function ProtocolsScreen() {
       setLoading(true);
     }
     try {
-      if (USE_MOCK_TIMELINE) {
-        setResponses(MOCK_TIMELINE);
-        return;
-      }
-
-      const currentDeviceId = await getStoredDeviceIdAsync();
-      const all = await ProtocolsApi.recentResponses(24, {
+      const identity = await getDeviceIdentityAsync();
+      const currentExpoPushToken = await getStoredExpoPushTokenAsync();
+      console.log("[protocols.loadResponses] requesting recent responses", {
+        silent,
+        deviceId: identity.deviceId,
+        deviceName: identity.deviceName,
+        expoPushTokenPreview: currentExpoPushToken ? `${currentExpoPushToken.slice(0, 8)}...${currentExpoPushToken.slice(-4)}` : null,
+      });
+      const all = await ProtocolsApi.recentResponses(168, {
         userId: MONITOR_USER_ID,
         role: MONITOR_ROLE,
-        deviceId: currentDeviceId,
+        deviceId: identity.deviceId,
+        expoPushToken: currentExpoPushToken,
+        deviceName: identity.deviceName,
+      });
+      console.log("[protocols.loadResponses] backend response", {
+        count: Array.isArray(all) ? all.length : null,
+        sample: Array.isArray(all) ? all.slice(0, 3) : all,
       });
       const normalized = Array.isArray(all) ? all : [];
-      if (normalized.length === 0 && __DEV__) {
-        setResponses(MOCK_TIMELINE);
-      } else {
-        setResponses(normalized);
-      }
+      setResponses(normalized);
     } catch (error) {
       recordDiagnostic({
         source: "protocols.loadResponses",
@@ -348,18 +397,9 @@ export default function ProtocolsScreen() {
 
   const loadMonitors = useCallback(async () => {
     try {
-      if (USE_MOCK_TIMELINE) {
-        setMonitors(MOCK_MONITORS);
-        return;
-      }
-
       const data = await ApiService.getMonitors();
       const normalized = Array.isArray(data) ? data : [];
-      if (normalized.length === 0 && __DEV__) {
-        setMonitors(MOCK_MONITORS);
-      } else {
-        setMonitors(normalized);
-      }
+      setMonitors(normalized);
     } catch (error) {
       recordDiagnostic({
         source: "protocols.loadMonitors",
@@ -370,6 +410,19 @@ export default function ProtocolsScreen() {
   }, []);
 
   const openExecutionProtocol = useCallback((item: ProtocolExecutionResponse) => {
+    const effectiveStatus = getEffectiveStatus(item, currentMoment);
+    if (effectiveStatus !== "PENDING") {
+      Alert.alert(
+        "Protocolo no disponible",
+        effectiveStatus === "IGNORED"
+          ? "Este protocolo ya no está pendiente para este dispositivo."
+          : effectiveStatus === "SCHEDULED"
+            ? "Este protocolo todavía no está habilitado. Vuelve cuando falte 1 hora o menos para su hora programada."
+          : "Este protocolo ya fue respondido.",
+      );
+      return;
+    }
+
     const reminderKey = String(item.id);
     if (reminderVisible) {
       return;
@@ -383,9 +436,11 @@ export default function ProtocolsScreen() {
       description:
         item.content ||
         "Completa el protocolo desde este formulario y deja el registro al instante.",
+      scheduledFor: item.scheduledFor,
+      scheduledTimeZone: item.scheduledTimeZone,
     });
     setReminderVisible(true);
-  }, [reminderVisible]);
+  }, [currentMoment, reminderVisible]);
 
   const openExecutionDetails = useCallback((item: ProtocolExecutionResponse) => {
     setSelectedExecution(item);
@@ -469,6 +524,8 @@ export default function ProtocolsScreen() {
       description:
         normalizedParams.protocolDescription ||
         "Completa el protocolo desde este formulario y deja el registro al instante.",
+      scheduledFor: normalizedParams.protocolScheduledFor,
+      scheduledTimeZone: normalizedParams.protocolScheduledTimeZone,
     });
     setReminderVisible(true);
   }, [normalizedParams]);
@@ -476,30 +533,47 @@ export default function ProtocolsScreen() {
   const handleReminderSave = useCallback(
     async (answer: "sí" | "no", note: string, respondedBy: string) => {
       if (!reminderProtocol) {
-        closeReminder();
-        return;
+        throw new Error("No hay un protocolo activo para guardar.");
       }
 
       const executionId = Number(reminderProtocol.id);
       if (Number.isNaN(executionId)) {
-        closeReminder();
-        return;
+        throw new Error("El identificador del protocolo no es válido.");
       }
 
       try {
-        if (!USE_MOCK_TIMELINE) {
-          const deviceId = await getStoredDeviceIdAsync();
-          await ProtocolsApi.respond(
-            executionId,
-            {
-              responseValue: answer === "sí" ? "YES" : "NO",
-              responseNote: note,
-              responderName: respondedBy,
-              deviceId: deviceId ?? undefined,
-            },
-            { userId: MONITOR_USER_ID, role: MONITOR_ROLE },
-          );
-        }
+        const identity = await getDeviceIdentityAsync();
+        const expoPushToken = await getStoredExpoPushTokenAsync();
+        console.log("[protocols.handleReminderSave] sending response", {
+          executionId,
+          answer,
+          respondedBy,
+          deviceId: identity.deviceId,
+          deviceName: identity.deviceName,
+          expoPushTokenPreview: expoPushToken ? `${expoPushToken.slice(0, 8)}...${expoPushToken.slice(-4)}` : null,
+        });
+        await ProtocolsApi.respond(
+          executionId,
+          {
+            responseValue: answer === "sí" ? "YES" : "NO",
+            responseNote: note,
+            responderName: respondedBy,
+            deviceId: identity.deviceId ?? undefined,
+            expoPushToken: expoPushToken ?? undefined,
+            deviceName: identity.deviceName ?? undefined,
+          },
+          { userId: MONITOR_USER_ID, role: MONITOR_ROLE },
+        );
+        console.log("[protocols.handleReminderSave] response sent", { executionId, deviceId: identity.deviceId, deviceName: identity.deviceName });
+
+        setResponseDisplayOverrides((current) => ({
+          ...current,
+          [executionId]: {
+            respondedByName: respondedBy,
+            respondedByDeviceId: identity.deviceId ?? undefined,
+            respondedByDeviceName: identity.deviceName ?? undefined,
+          },
+        }));
 
         await loadResponses();
         const now = new Date().toISOString();
@@ -508,12 +582,14 @@ export default function ProtocolsScreen() {
             item.id === executionId
               ? {
                   ...item,
-                  status: "ANSWERED",
-                  responseValue: answer === "sí" ? "YES" : "NO",
-                  responseNote: note,
-                  respondedByName: respondedBy,
-                  respondedAt: now,
-                }
+                status: "ANSWERED",
+                responseValue: answer === "sí" ? "YES" : "NO",
+                responseNote: note,
+                respondedByName: respondedBy,
+                respondedByDeviceId: identity.deviceId ?? item.respondedByDeviceId,
+                respondedByDeviceName: identity.deviceName ?? item.respondedByDeviceName,
+                respondedAt: now,
+              }
               : item,
           ),
         );
@@ -525,21 +601,23 @@ export default function ProtocolsScreen() {
                 responseValue: answer === "sí" ? "YES" : "NO",
                 responseNote: note,
                 respondedByName: respondedBy,
+                respondedByDeviceId: identity.deviceId ?? current.respondedByDeviceId,
+                respondedByDeviceName: identity.deviceName ?? current.respondedByDeviceName,
                 respondedAt: now,
               }
             : current,
         );
         showSaveNotice("Respuesta guardada y sincronizada con el backend.");
-        closeReminder();
       } catch (error) {
         recordDiagnostic({
           source: "protocols.modalSave",
           message: "No se pudo guardar la respuesta del modal.",
           error,
         });
+        throw error;
       }
     },
-    [closeReminder, loadResponses, reminderProtocol, showSaveNotice],
+    [loadResponses, reminderProtocol, showSaveNotice],
   );
 
   const timelineProtocols = useMemo(() => {
@@ -565,8 +643,22 @@ export default function ProtocolsScreen() {
       });
   }, [responses, searchQuery]);
 
+  const selectedDayProtocols = useMemo(() => {
+    return timelineProtocols.filter((item) => {
+      const itemDate = new Date(item.scheduledFor || item.lastReminderAt || 0);
+      return isSameLocalDay(itemDate, selectedDay);
+    });
+  }, [selectedDay, timelineProtocols]);
+
+  const visibleProtocols = useMemo(() => {
+    return selectedDayProtocols.map((item) => {
+      const override = responseDisplayOverrides[item.id];
+      return override ? { ...item, ...override } : item;
+    });
+  }, [responseDisplayOverrides, selectedDayProtocols]);
+
   const selectedDetailMeta = selectedExecution
-    ? getStatusMeta(selectedExecution.status)
+    ? getStatusMeta(getEffectiveStatus(selectedExecution, currentMoment))
     : STATUS_META.PENDING;
 
   const currentClockLabel = currentMoment.toLocaleTimeString("es-CO", {
@@ -580,21 +672,52 @@ export default function ProtocolsScreen() {
     month: "long",
   });
 
+  const selectedDayLabel = formatDaySelectorLabel(selectedDay, currentMoment);
+
   const nextProtocol = useMemo(() => {
     const nowTime = currentMoment.getTime();
-    const next = timelineProtocols.find((item) => {
+    const source = selectedDayProtocols;
+    const next = source.find((item) => {
       const itemTime = new Date(item.scheduledFor || item.lastReminderAt || 0).getTime();
-      return itemTime >= nowTime && item.status !== "ANSWERED";
+      return itemTime >= nowTime && canOpenExecution(item, currentMoment);
     });
 
-    return next || timelineProtocols.find((item) => item.status !== "ANSWERED") || null;
-  }, [currentMoment, timelineProtocols]);
+    return next || source.find((item) => canOpenExecution(item, currentMoment)) || null;
+  }, [currentMoment, selectedDayProtocols]);
+
+  const pendingProtocolCount = useMemo(
+    () => selectedDayProtocols.filter((item) => canOpenExecution(item, currentMoment)).length,
+    [currentMoment, selectedDayProtocols],
+  );
+
+  const visibleProtocolCount = visibleProtocols.length;
 
   const openReminderFromDetail = useCallback(() => {
     if (!selectedExecution) return;
+    const effectiveStatus = getEffectiveStatus(selectedExecution, currentMoment);
+    if (effectiveStatus !== "PENDING") {
+      Alert.alert(
+        "Protocolo no disponible",
+        effectiveStatus === "IGNORED"
+          ? "Este protocolo ya no está pendiente para este dispositivo."
+          : effectiveStatus === "SCHEDULED"
+            ? "Este protocolo todavía no está habilitado. Vuelve cuando falte 1 hora o menos para su hora programada."
+          : "Este protocolo ya fue respondido.",
+      );
+      return;
+    }
     openExecutionProtocol(selectedExecution);
     closeExecutionDetails();
-  }, [closeExecutionDetails, openExecutionProtocol, selectedExecution]);
+  }, [closeExecutionDetails, currentMoment, openExecutionProtocol, selectedExecution]);
+
+  const selectedExecutionWithOverride = useMemo(() => {
+    if (!selectedExecution) {
+      return null;
+    }
+
+    const override = responseDisplayOverrides[selectedExecution.id];
+    return override ? { ...selectedExecution, ...override } : selectedExecution;
+  }, [responseDisplayOverrides, selectedExecution]);
 
   return (
     <View className="flex-1 bg-[#F5F8FB]">
@@ -609,7 +732,7 @@ export default function ProtocolsScreen() {
       ) : null}
 
       <Modal
-        visible={detailVisible && Boolean(selectedExecution)}
+        visible={detailVisible && Boolean(selectedExecutionWithOverride)}
         transparent
         animationType="fade"
         onRequestClose={closeExecutionDetails}
@@ -620,7 +743,7 @@ export default function ProtocolsScreen() {
             onPress={closeExecutionDetails}
             className="absolute inset-0"
           />
-          {selectedExecution ? (
+          {selectedExecutionWithOverride ? (
             <View className="rounded-[28px] bg-white p-5 shadow-2xl border border-[#E2E8F0]">
               <View className="flex-row items-start justify-between gap-3">
                 <View className="flex-1 pr-2">
@@ -628,11 +751,16 @@ export default function ProtocolsScreen() {
                     Detalle del protocolo
                   </Text>
                   <Text className="mt-2 text-[22px] font-bold leading-7 text-[#0F172A]">
-                    {selectedExecution.protocolTitle || "Protocolo"}
+                    {selectedExecutionWithOverride.protocolTitle || "Protocolo"}
                   </Text>
                   <Text className="mt-1 text-sm text-[#475569]">
-                    Hora programada: {getTimeLabel(selectedExecution.scheduledFor)}
+                    Hora programada: {getTimeLabel(selectedExecutionWithOverride.scheduledFor)}
                   </Text>
+                  {getEffectiveStatus(selectedExecutionWithOverride, currentMoment) === "SCHEDULED" ? (
+                    <Text className="mt-1 text-xs font-medium text-[#1D4ED8]">
+                      Disponible para responder desde 1 hora antes de la hora programada.
+                    </Text>
+                  ) : null}
                 </View>
                 <View
                   className="rounded-full px-3 py-2 flex-row items-center gap-2"
@@ -662,16 +790,16 @@ export default function ProtocolsScreen() {
                 <Text className="text-[11px] uppercase tracking-[0.2em] text-[#94A3B8]">
                   Respuesta
                 </Text>
-                {selectedExecution.status === "ANSWERED" ? (
+                {getEffectiveStatus(selectedExecutionWithOverride, currentMoment) === "ANSWERED" ? (
                   <View className="mt-2">
                     <Text className="text-sm font-semibold text-[#0F172A]">
-                      {selectedExecution.respondedByName || "Sin nombre"}
+                      {selectedExecutionWithOverride.respondedByName || "Respondido"}
                     </Text>
                     <Text className="mt-1 text-sm leading-6 text-[#334155]">
-                      {selectedExecution.responseNote || "Respuesta registrada sin detalle adicional."}
+                      {selectedExecutionWithOverride.respondedByDeviceName || "Dispositivo sin nombre"}
                     </Text>
                     <Text className="mt-2 text-xs text-[#64748B]">
-                      Respondido: {formatDateTime(selectedExecution.respondedAt)}
+                      Respondido: {formatDateTime(selectedExecutionWithOverride.respondedAt)}
                     </Text>
                   </View>
                 ) : (
@@ -690,7 +818,7 @@ export default function ProtocolsScreen() {
                     Cerrar
                   </Text>
                 </TouchableOpacity>
-                {selectedExecution.status !== "ANSWERED" ? (
+                {getEffectiveStatus(selectedExecutionWithOverride, currentMoment) === "PENDING" ? (
                   <TouchableOpacity
                     onPress={openReminderFromDetail}
                     className="flex-1 rounded-2xl bg-[#006bb3] px-4 py-3"
@@ -699,6 +827,18 @@ export default function ProtocolsScreen() {
                       Completar protocolo
                     </Text>
                   </TouchableOpacity>
+                ) : getEffectiveStatus(selectedExecutionWithOverride, currentMoment) === "SCHEDULED" ? (
+                  <View className="flex-1 rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] px-4 py-3">
+                    <Text className="text-center font-semibold text-[#1D4ED8]">
+                      Aún no disponible
+                    </Text>
+                  </View>
+                ) : getEffectiveStatus(selectedExecutionWithOverride, currentMoment) === "IGNORED" ? (
+                  <View className="flex-1 rounded-2xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3">
+                    <Text className="text-center font-semibold text-[#B91C1C]">
+                      Vencido para este dispositivo
+                    </Text>
+                  </View>
                 ) : null}
               </View>
             </View>
@@ -707,7 +847,7 @@ export default function ProtocolsScreen() {
       </Modal>
 
       <FlatList
-        data={timelineProtocols}
+        data={visibleProtocols}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
           <TimelineRow item={item} onPress={openExecutionDetails} />
@@ -742,9 +882,56 @@ export default function ProtocolsScreen() {
                   </View>
                   <View className="rounded-2xl bg-[#EFF6FF] px-3 py-2">
                     <Text className="text-xs font-semibold uppercase tracking-[0.18em] text-[#1D4ED8]">
-                      {timelineProtocols.length} eventos
+                      {pendingProtocolCount} pendientes
                     </Text>
                   </View>
+                </View>
+              </View>
+
+              <View className="mt-4 flex-row items-center justify-between rounded-[24px] border border-[#E2E8F0] bg-[#F8FAFC] px-3 py-3">
+                <TouchableOpacity
+                  onPress={() => setSelectedDay((current) => addDays(current, -1))}
+                  className="h-11 w-11 items-center justify-center rounded-full bg-white border border-[#E2E8F0]"
+                  accessibilityRole="button"
+                  accessibilityLabel="Ver día anterior"
+                >
+                  <Ionicons name="chevron-back" size={20} color="#1D4ED8" />
+                </TouchableOpacity>
+
+                <View className="flex-1 px-3 items-center">
+                  <Text className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#94A3B8]">
+                    Día activo
+                  </Text>
+                  <Text className="mt-1 text-base font-bold text-[#0F172A]">
+                    {selectedDayLabel}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => setSelectedDay((current) => addDays(current, 1))}
+                  className="h-11 w-11 items-center justify-center rounded-full bg-white border border-[#E2E8F0]"
+                  accessibilityRole="button"
+                  accessibilityLabel="Ver día siguiente"
+                >
+                  <Ionicons name="chevron-forward" size={20} color="#1D4ED8" />
+                </TouchableOpacity>
+              </View>
+
+              <View className="mt-3 flex-row gap-2">
+                <TouchableOpacity
+                  onPress={() => setSelectedDay(startOfLocalDay(new Date()))}
+                  className={`flex-1 rounded-2xl px-3 py-2 ${isSameLocalDay(selectedDay, new Date()) ? "bg-[#0F172A]" : "bg-[#EFF6FF]"}`}
+                >
+                  <Text
+                    className={`text-center text-xs font-semibold uppercase tracking-[0.18em] ${isSameLocalDay(selectedDay, new Date()) ? "text-white" : "text-[#1D4ED8]"}`}
+                  >
+                    Hoy
+                  </Text>
+                </TouchableOpacity>
+                <View className="flex-1 rounded-2xl bg-[#EFF6FF] px-3 py-2">
+                  <Text className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#1D4ED8]">
+                    {visibleProtocolCount} visibles
+                  </Text>
                 </View>
               </View>
 
@@ -757,7 +944,7 @@ export default function ProtocolsScreen() {
                     {nextProtocol?.protocolTitle || "Todo al día"}
                   </Text>
                   <Text className="mt-1 text-sm text-[#475569]" numberOfLines={1}>
-                    {nextProtocol ? `${getTimeLabel(nextProtocol.scheduledFor)} · ${getStatusMeta(nextProtocol.status).label}` : "No hay protocolos pendientes visibles"}
+                    {nextProtocol ? `${getTimeLabel(nextProtocol.scheduledFor)} · ${getStatusMeta(nextProtocol.status).label}` : "No hay protocolos pendientes para este día"}
                   </Text>
                 </View>
                 <View className="w-[88px] rounded-3xl border border-[#E2E8F0] bg-[#FEF3C7] px-3 py-3 items-center justify-center">
@@ -816,7 +1003,7 @@ export default function ProtocolsScreen() {
                 color="#1D4ED8"
               />
               <Text className="mt-4 text-center text-[#475569] text-sm">
-                No hay protocolos para mostrar con el filtro actual.
+                No hay protocolos para mostrar en {selectedDayLabel.toLowerCase()}.
               </Text>
             </View>
           )

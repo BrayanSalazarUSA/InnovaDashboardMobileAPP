@@ -7,10 +7,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   ImageBackground,
+  Modal,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { Switch } from "react-native-gesture-handler";
@@ -42,7 +46,7 @@ export type ReportImage = {
   uri: string;
   type?: string;
   name?: string;
-  isRemote: boolean; // 👈 clave
+  isRemote: boolean; //  clave
 };
 
 export default function NewReport() {
@@ -82,6 +86,10 @@ export default function NewReport() {
   const [buildings] = useState<any[]>([]);
   const [monitors, setMonitors] = useState<any[]>([]);
   const [incidents, setIncidents] = useState<any[]>([]);
+  const [propertyConfirmVisible, setPropertyConfirmVisible] = useState(false);
+  const [propertyConfirmSearch, setPropertyConfirmSearch] = useState("");
+  const [propertyConfirmSelection, setPropertyConfirmSelection] =
+    useState<string>("");
 
   const [images, setImages] = useState<ReportImage[]>([]);
 
@@ -115,6 +123,37 @@ export default function NewReport() {
     policeFirstResponderScene,
   ]);
 
+  const getPropertyLabel = useCallback((property: any) => {
+    return (
+      property?.name ||
+      property?.propertyName ||
+      property?.label ||
+      property?.address ||
+      `Propiedad ${property?.id ?? ""}`.trim()
+    );
+  }, []);
+
+  const openPropertyConfirmation = useCallback(() => {
+    if (!propertyId) {
+      Alert.alert(
+        "Propiedad requerida",
+        "Primero selecciona una propiedad antes de enviar el reporte.",
+      );
+      return;
+    }
+
+    setPropertyConfirmSelection("");
+    setPropertyConfirmSearch("");
+    setPropertyConfirmVisible(true);
+  }, [propertyId]);
+
+  const closePropertyConfirmation = useCallback(() => {
+    if (submitting) return;
+    setPropertyConfirmVisible(false);
+    setPropertyConfirmSearch("");
+    setPropertyConfirmSelection("");
+  }, [submitting]);
+
   /* =========================
      RESET
   ========================== */
@@ -131,16 +170,19 @@ export default function NewReport() {
     setIsHighPriority(false);
     setPoliceFirstResponderNotified(false);
     setPoliceFirstResponderScene("");
+    setPropertyConfirmVisible(false);
+    setPropertyConfirmSearch("");
+    setPropertyConfirmSelection("");
   };
 
   useEffect(() => {
-    // 🚫 NUNCA crear drafts en modo edición
+    //  NUNCA crear drafts en modo edición
     if (isEditMode) return;
 
-    // ❌ Nada que guardar
+    //  Nada que guardar
     if (!hasMeaningfulChanges()) return;
 
-    // 🟢 Primer cambio → crear draft
+    //  Primer cambio → crear draft
     if (!currentDraftId) {
       const newDraftId = Crypto.randomUUID();
       setIsDraftMode(true);
@@ -148,7 +190,7 @@ export default function NewReport() {
       return;
     }
 
-    // 🟡 Guardar draft existente
+    // Guardar draft existente
     const save = async () => {
       const selectedProperty = properties.find((p) => p.id === propertyId);
       const selectedIncident = incidents.find((i) => i.id === incidentId);
@@ -376,122 +418,195 @@ export default function NewReport() {
   /* =========================
      SUBMIT
   ========================== */
-  const handleSubmit = async () => {
-    if (policeFirstResponderNotified && !policeFirstResponderScene) {
+  const performSubmit = useCallback(
+    async (confirmedPropertyId: string) => {
+      if (policeFirstResponderNotified && !policeFirstResponderScene) {
+        Alert.alert(
+          "Información requerida",
+          "Selecciona si la policía llegó al lugar o si no llegó antes de enviar el reporte.",
+        );
+        return;
+      }
+
+      try {
+        setSubmitting(true);
+
+        // 🟢 Imágenes nuevas (locales)
+        const newImages = images.filter((img) => !img.isRemote);
+        const selectedProperty = properties.find(
+          (p) => String(p.id) === String(confirmedPropertyId),
+        );
+        const selectedIncident = incidents.find(
+          (i) => String(i.id) === String(incidentId),
+        );
+        const selectedMonitor = monitors.find(
+          (m) => String(m.id) === String(monitorId),
+        );
+        const safePriority = isHighPriority ? "ALTA" : null;
+
+        // ==========================
+        // 🟢 CREAR REPORTE NUEVO
+        // ==========================
+        if (!isEditMode) {
+          const payload = {
+            property: selectedProperty,
+            contributedBy: selectedMonitor
+              ? { ...selectedMonitor, id: normalizeId(selectedMonitor.id) }
+              : { id: normalizeId(monitorId) },
+            caseType: selectedIncident,
+            incidentStartTime: startTime,
+            incidentEndTime: endTime,
+            reportDetails: description,
+            followings,
+            priority: safePriority,
+            policeFirstResponderNotified,
+            policeFirstResponderScene: policeFirstResponderNotified
+              ? policeFirstResponderScene
+              : null,
+            incidentLocations,
+
+            // 🔥 AQUÍ ESTABA EL PROBLEMA
+            evidences: newImages.map((img, i) => ({
+              uri: img.uri,
+              type: img.type || "image/jpeg",
+              name: img.name || `evidence_${i}.jpg`,
+            })),
+          };
+
+          const result = await ApiService.createReport(payload);
+          if (result?.failedEvidenceCount > 0) {
+            Alert.alert(
+              "Reporte guardado",
+              `El reporte quedo creado, pero ${result.failedEvidenceCount} evidencia(s) no se pudieron subir. Puedes editar el reporte e intentar agregarlas de nuevo.`,
+            );
+          }
+        }
+
+        // ==========================
+        // ✏️ EDITAR REPORTE EXISTENTE
+        // ==========================
+        if (isEditMode && id) {
+          // 1️⃣ Actualizar datos del reporte
+          await ApiService.updateReport(
+            id,
+            {
+              property: selectedProperty,
+              contributedBy: selectedMonitor
+                ? { ...selectedMonitor, id: normalizeId(selectedMonitor.id) }
+                : { id: normalizeId(monitorId) },
+              caseType: selectedIncident,
+              incidentStartTime: startTime,
+              incidentEndTime: endTime,
+              reportDetails: description,
+              followings,
+              priority: safePriority,
+              policeFirstResponderNotified,
+              policeFirstResponderScene: policeFirstResponderNotified
+                ? policeFirstResponderScene
+                : null,
+              incidentLocations,
+            },
+            normalizeId(monitorId),
+          );
+
+          // 2️⃣ Subir SOLO imágenes nuevas
+          if (newImages.length > 0) {
+            const failedEvidenceCount =
+              await ApiService.uploadPendingEvidencesSafely(
+                id,
+                newImages.map((img, index) => ({
+                  uri: img.uri,
+                  type: img.type || "image/jpeg",
+                  name: img.name || `evidence_${index}.jpg`,
+                })),
+                monitorId,
+              );
+
+            if (failedEvidenceCount > 0) {
+              Alert.alert(
+                "Reporte actualizado",
+                `${failedEvidenceCount} evidencia(s) no se pudieron subir. El resto del reporte quedo guardado.`,
+              );
+            }
+          }
+        }
+
+        // 🧹 Limpiar draft
+        if (currentDraftId) {
+          await DraftService.delete(currentDraftId);
+        }
+
+        resetForm();
+        router.replace("/(drawer)");
+      } catch (e: any) {
+        Alert.alert("Error", e.message || "No se pudo enviar el reporte");
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [
+      currentDraftId,
+      description,
+      endTime,
+      followings,
+      id,
+      images,
+      incidentId,
+      incidentLocations,
+      incidents,
+      isEditMode,
+      isHighPriority,
+      monitorId,
+      monitors,
+      policeFirstResponderNotified,
+      policeFirstResponderScene,
+      properties,
+      router,
+      startTime,
+    ],
+  );
+
+  const handleSubmitPress = useCallback(() => {
+    openPropertyConfirmation();
+  }, [openPropertyConfirmation]);
+
+  const handleConfirmPropertyAndSubmit = useCallback(() => {
+    const confirmedPropertyId = propertyConfirmSelection;
+
+    if (!confirmedPropertyId) {
       Alert.alert(
-        "Información requerida",
-        "Selecciona si la policía llegó al lugar o si no llegó antes de enviar el reporte.",
+        "Verificación requerida",
+        "Busca y selecciona manualmente la propiedad antes de confirmar el envío.",
       );
       return;
     }
 
-    try {
-      setSubmitting(true);
-
-      // 🟢 Imágenes nuevas (locales)
-      const newImages = images.filter((img) => !img.isRemote);
-      const selectedProperty = properties.find((p) => p.id === propertyId);
-      const selectedIncident = incidents.find((i) => String(i.id) === String(incidentId));
-      const selectedMonitor = monitors.find((m) => String(m.id) === String(monitorId));
-      const safePriority = isHighPriority ? "ALTA" : null;
-
-      // ==========================
-      // 🟢 CREAR REPORTE NUEVO
-      // ==========================
-      if (!isEditMode) {
-        const payload = {
-          property: selectedProperty,
-          contributedBy: selectedMonitor
-            ? { ...selectedMonitor, id: normalizeId(selectedMonitor.id) }
-            : { id: normalizeId(monitorId) },
-          caseType: selectedIncident,
-          incidentStartTime: startTime,
-          incidentEndTime: endTime,
-          reportDetails: description,
-          followings,
-          priority: safePriority,
-          policeFirstResponderNotified,
-          policeFirstResponderScene: policeFirstResponderNotified
-            ? policeFirstResponderScene
-            : null,
-          incidentLocations,
-
-          // 🔥 AQUÍ ESTABA EL PROBLEMA
-          evidences: newImages.map((img, i) => ({
-            uri: img.uri,
-            type: img.type || "image/jpeg",
-            name: img.name || `evidence_${i}.jpg`,
-          })),
-        };
-
-        const result = await ApiService.createReport(payload);
-        if (result?.failedEvidenceCount > 0) {
-          Alert.alert(
-            "Reporte guardado",
-            `El reporte quedo creado, pero ${result.failedEvidenceCount} evidencia(s) no se pudieron subir. Puedes editar el reporte e intentar agregarlas de nuevo.`,
-          );
-        }
-      }
-
-      // ==========================
-      // ✏️ EDITAR REPORTE EXISTENTE
-      // ==========================
-      if (isEditMode && id) {
-        // 1️⃣ Actualizar datos del reporte
-        await ApiService.updateReport(id, {
-          property: selectedProperty,
-          contributedBy: selectedMonitor
-            ? { ...selectedMonitor, id: normalizeId(selectedMonitor.id) }
-            : { id: normalizeId(monitorId) },
-          caseType: selectedIncident,
-          incidentStartTime: startTime,
-          incidentEndTime: endTime,
-          reportDetails: description,
-          followings,
-          priority: safePriority,
-          policeFirstResponderNotified,
-          policeFirstResponderScene: policeFirstResponderNotified
-            ? policeFirstResponderScene
-            : null,
-          incidentLocations,
-        }, normalizeId(monitorId));
-
-        // 2️⃣ Subir SOLO imágenes nuevas
-        if (newImages.length > 0) {
-          const failedEvidenceCount =
-            await ApiService.uploadPendingEvidencesSafely(
-              id,
-              newImages.map((img, index) => ({
-                uri: img.uri,
-                type: img.type || "image/jpeg",
-                name: img.name || `evidence_${index}.jpg`,
-              })),
-              monitorId,
-            );
-
-          if (failedEvidenceCount > 0) {
-            Alert.alert(
-              "Reporte actualizado",
-              `${failedEvidenceCount} evidencia(s) no se pudieron subir. El resto del reporte quedo guardado.`,
-            );
-          }
-        }
-      }
-
-      // 🧹 Limpiar draft
-      if (currentDraftId) {
-        await DraftService.delete(currentDraftId);
-      }
-
-      resetForm();
-      router.replace("/(drawer)");
-    } catch (e: any) {
-      Alert.alert("Error", e.message || "No se pudo enviar el reporte");
-    } finally {
-      setSubmitting(false);
+    if (String(confirmedPropertyId) !== String(propertyId)) {
+      closePropertyConfirmation();
+      Alert.alert(
+        "Propiedades no coinciden",
+        "La propiedad verificada no coincide con la propiedad seleccionada en el formulario. Revisa la propiedad antes de enviar el reporte.",
+      );
+      return;
     }
-  };
 
+    closePropertyConfirmation();
+    void performSubmit(confirmedPropertyId);
+  }, [
+    closePropertyConfirmation,
+    performSubmit,
+    propertyConfirmSelection,
+    propertyId,
+  ]);
+
+  const filteredConfirmationProperties = properties.filter((property) =>
+    getPropertyLabel(property)
+      .toLowerCase()
+      .includes(propertyConfirmSearch.toLowerCase()),
+  );
+  const selectedFormProperty = properties.find(
+    (property) => String(property.id) === String(propertyId),
+  );
   /* =========================
      UI
   ========================== */
@@ -780,10 +895,14 @@ export default function NewReport() {
               setImages={setImages}
               maxImages={10}
               onRemoveRemoteImage={async (image) => {
-                await ApiService.deletePendingEvidence(id!, {
-                  id: image.id,
-                  path: image.path || image.uri.replace(BUCKET_URL, ""),
-                }, normalizeId(monitorId));
+                await ApiService.deletePendingEvidence(
+                  id!,
+                  {
+                    id: image.id,
+                    path: image.path || image.uri.replace(BUCKET_URL, ""),
+                  },
+                  normalizeId(monitorId),
+                );
               }}
             />
             {/* ========================
@@ -802,7 +921,7 @@ export default function NewReport() {
           ======================== */}
             <TouchableOpacity
               disabled={submitting}
-              onPress={handleSubmit}
+              onPress={handleSubmitPress}
               activeOpacity={0.9}
               className={`flex-row rounded-2xl py-4 justify-center items-center shadow-lg ${
                 submitting ? "bg-[#006bb3]/60" : "bg-[#006bb3]"
@@ -827,6 +946,124 @@ export default function NewReport() {
           </ScrollView>
         </ImageBackground>
       </View>
+
+      <Modal
+        visible={propertyConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closePropertyConfirmation}
+      >
+        <TouchableWithoutFeedback onPress={closePropertyConfirmation}>
+          <View className="flex-1 bg-black/60 justify-center px-4">
+            <TouchableWithoutFeedback>
+              <View className="overflow-hidden rounded-[28px] border border-[#E2E8F0] bg-white">
+                <View className="border-b border-[#E8D9A3] bg-[#FFF9E8] px-5 py-4">
+                  <Text className="text-[11px] font-semibold uppercase tracking-[0.28em] text-[#A67C00]">
+                    Verificar propiedad
+                  </Text>
+                  <Text className="mt-2 text-[22px] font-bold leading-7 text-[#0F172A]">
+                    Confirma antes de enviar
+                  </Text>
+                  <Text className="mt-2 text-sm leading-5 text-[#475569]">
+                    ¿Estas seguro de que vas a subir este reporte a esta
+                    propiedad? Debes confirmar exactamente la misma del
+                    formulario.
+                  </Text>
+                </View>
+
+                <View className="px-5 pt-4">
+                  <View className="mt-4 flex-row items-center border border-[#F2DEA2] rounded-lg px-3 py-2 bg-[#FFFBE6]">
+                    <MaterialCommunityIcons
+                      name="magnify"
+                      size={20}
+                      color="#A67C00"
+                    />
+                    <TextInput
+                      value={propertyConfirmSearch}
+                      onChangeText={setPropertyConfirmSearch}
+                      placeholder="Buscar propiedad..."
+                      placeholderTextColor="#B8A896"
+                      className="ml-3 flex-1 text-sm text-[#0F172A]"
+                    />
+                  </View>
+                </View>
+
+                <View className="max-h-[44%] px-5 pt-3">
+                  <FlatList
+                    data={filteredConfirmationProperties}
+                    keyExtractor={(item) => String(item.id)}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                    renderItem={({ item }) => {
+                      const isSelected =
+                        String(item.id) === String(propertyConfirmSelection);
+
+                      return (
+                        <TouchableOpacity
+                          onPress={() =>
+                            setPropertyConfirmSelection(String(item.id))
+                          }
+                          className={`mb-1 rounded-lg border px-3 py-3 ${
+                            isSelected
+                              ? "border-[#F2DEA2] bg-[#F8F3DA]"
+                              : "border-[#EFEFEF] bg-white"
+                          }`}
+                        >
+                          <Text
+                            className={`text-base font-semibold ${
+                              isSelected ? "text-[#A67C00]" : "text-[#0F172A]"
+                            }`}
+                            numberOfLines={1}
+                          >
+                            {getPropertyLabel(item)}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    }}
+                    ListEmptyComponent={
+                      <View className="rounded-lg border border-dashed border-[#F2DEA2] bg-[#FFFBE6] px-4 py-6">
+                        <Text className="text-center text-sm text-[#7A7464]">
+                          No se encontraron propiedades.
+                        </Text>
+                      </View>
+                    }
+                  />
+                </View>
+
+                <View className="flex-row gap-3 border-t border-[#E5E7EB] px-4 py-4">
+                  <TouchableOpacity
+                    onPress={closePropertyConfirmation}
+                    className="flex-1 rounded-2xl border border-[#E5E7EB] bg-white px-4 py-4"
+                  >
+                    <Text className="text-center font-semibold text-[#475569]">
+                      Cancelar
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={handleConfirmPropertyAndSubmit}
+                    disabled={submitting || !propertyConfirmSelection}
+                    className={`flex-1 rounded-2xl px-4 py-4 ${
+                      submitting || !propertyConfirmSelection
+                        ? "bg-[#D1D5DB]"
+                        : "bg-[#006bb3]"
+                    }`}
+                  >
+                    <Text
+                      className={`text-center font-semibold ${
+                        submitting || !propertyConfirmSelection
+                          ? "text-[#94A3B8]"
+                          : "text-white"
+                      }`}
+                    >
+                      {submitting ? "Enviando..." : "Verificar y enviar"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </ScrollView>
   );
 }

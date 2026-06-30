@@ -7,8 +7,8 @@ import {
   AttendanceSessionSummary,
 } from "@/types/attendance";
 import { runWithCacheFallback } from "@/utils/apiCache";
-import resolveApiBaseUrl from "@/utils/apiBaseUrl";
 import { fetchWithRetry, isRetryableNetworkError } from "@/utils/fetchWithRetry";
+import { resolveApiBaseUrl } from "@/utils/apiBaseUrl";
 import { Platform } from "react-native";
 
 const API_URL = resolveApiBaseUrl();
