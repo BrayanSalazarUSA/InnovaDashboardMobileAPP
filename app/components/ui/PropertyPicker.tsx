@@ -31,13 +31,13 @@ export default function PropertyPicker({
   const [visible, setVisible] = useState(false);
   const [search, setSearch] = useState("");
 
-  const selectedProperty = properties.find((p) => p.id === selectedId);
+  const selectedProperty = properties.find((p) => String(p.id) === String(selectedId));
   const filtered = properties.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleSelect = (id: string) => {
-    onSelect(id);
+    onSelect(String(id));
     setVisible(false);
     setSearch("");
   };
@@ -103,12 +103,12 @@ export default function PropertyPicker({
                       <TouchableOpacity
                         onPress={() => handleSelect(item.id)}
                         className={`py-3 px-3 rounded-lg mb-1 ${
-                          item.id === selectedId ? "bg-[#F8F3DA]" : "bg-white"
+                          String(item.id) === String(selectedId) ? "bg-[#F8F3DA]" : "bg-white"
                         }`}
                       >
                         <Text
                           className={`text-base ${
-                            item.id === selectedId
+                            String(item.id) === String(selectedId)
                               ? "text-[#A67C00] font-semibold"
                               : "text-gray-700"
                           }`}

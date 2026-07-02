@@ -83,7 +83,7 @@ export default function NewReport() {
   const [policeFirstResponderScene, setPoliceFirstResponderScene] =
     useState("");
   const [properties, setProperties] = useState<any[]>([]);
-  const [buildings] = useState<any[]>([]);
+  const [buildings, setBuildings] = useState<any[]>([]);
   const [monitors, setMonitors] = useState<any[]>([]);
   const [incidents, setIncidents] = useState<any[]>([]);
   const [propertyConfirmVisible, setPropertyConfirmVisible] = useState(false);
@@ -192,7 +192,7 @@ export default function NewReport() {
 
     // Guardar draft existente
     const save = async () => {
-      const selectedProperty = properties.find((p) => p.id === propertyId);
+      const selectedProperty = properties.find((p) => String(p.id) === String(propertyId));
       const selectedIncident = incidents.find((i) => i.id === incidentId);
       const selectedMonitor = monitors.find((m) => m.id === monitorId);
 
@@ -362,6 +362,44 @@ export default function NewReport() {
       void loadCatalogs();
     }, []),
   );
+
+  useEffect(() => {
+    let active = true;
+
+    const loadBuildings = async () => {
+      if (!propertyId) {
+        setBuildings([]);
+        return;
+      }
+
+      try {
+        const data = await ApiService.getBuildings(propertyId);
+        if (!active) {
+          return;
+        }
+
+        setBuildings(Array.isArray(data) ? data : []);
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+
+        setBuildings([]);
+        recordDiagnostic({
+          source: "newReport.loadBuildings",
+          message: "No se pudo cargar el listado de edificios para la propiedad.",
+          error,
+          extra: `propertyId=${propertyId}`,
+        });
+      }
+    };
+
+    void loadBuildings();
+
+    return () => {
+      active = false;
+    };
+  }, [propertyId]);
 
   /* =========================
      LOADERS
@@ -603,9 +641,6 @@ export default function NewReport() {
     getPropertyLabel(property)
       .toLowerCase()
       .includes(propertyConfirmSearch.toLowerCase()),
-  );
-  const selectedFormProperty = properties.find(
-    (property) => String(property.id) === String(propertyId),
   );
   /* =========================
      UI
@@ -910,7 +945,7 @@ export default function NewReport() {
           ======================== */}
             {!isEditMode && (
               <IncidentLocationsSelector
-                property={properties.find((p) => p.id === propertyId)}
+                property={properties.find((p) => String(p.id) === String(propertyId))}
                 buildings={buildings}
                 onLocationsChange={setIncidentLocations}
               />

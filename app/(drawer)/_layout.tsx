@@ -57,17 +57,6 @@ export default function DrawerLayout() {
       />
 
       <Drawer.Screen
-        name="protocols"
-        options={{
-          drawerLabel: "Seguimiento de Protocolos",
-          title: "Seguimiento de Protocolos",
-          drawerIcon: ({ color, size }) => (
-            <Ionicons name="clipboard" color={color} size={size} />
-          ),
-        }}
-      />
-
-      <Drawer.Screen
         name="new"
         options={{
           drawerLabel: "Agregar Reporte",
@@ -78,6 +67,7 @@ export default function DrawerLayout() {
           ),
         }}
       />
+
       {/* Oculta detalles */}
       <Drawer.Screen
         name="my-reports"
@@ -86,6 +76,17 @@ export default function DrawerLayout() {
           title: "Mis reportes",
           drawerIcon: ({ color, size }) => (
             <Ionicons name="folder-outline" color={color} size={size} />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="protocols"
+        options={{
+          drawerLabel: "Protocolos",
+          title: "Protocolos",
+          drawerIcon: ({ color, size }) => (
+            <Ionicons name="alarm-outline" color={color} size={size} />
           ),
         }}
       />

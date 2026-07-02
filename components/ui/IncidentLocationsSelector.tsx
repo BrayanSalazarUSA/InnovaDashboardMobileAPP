@@ -17,6 +17,23 @@ type Props = {
   onLocationsChange?: (locations: any[]) => void;
 };
 
+function normalizeNumber(value: any) {
+  const numeric = typeof value === "string" ? Number(value) : value;
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function getBuildingName(building: any) {
+  return building?.name || building?.label || `Edificio ${building?.id ?? ""}`.trim();
+}
+
+function getBuildingLatitude(building: any) {
+  return normalizeNumber(building?.lat ?? building?.latitude);
+}
+
+function getBuildingLongitude(building: any) {
+  return normalizeNumber(building?.lon ?? building?.longitude);
+}
+
 export default function IncidentLocationsSelector({
   property,
   buildings = [],
@@ -47,7 +64,7 @@ export default function IncidentLocationsSelector({
     const items = [
       { label: "Zona exterior", value: null },
       ...buildings.map((b) => ({
-        label: `🏢 ${b.name}`,
+        label: `🏢 ${getBuildingName(b)}`,
         value: b.id,
       })),
     ];
@@ -146,40 +163,54 @@ export default function IncidentLocationsSelector({
               minZoomLevel={16}
               maxZoomLevel={20}
             >
-              {incidentLocations.map((loc) => (
-                <Marker
-                  key={loc.id}
-                  coordinate={{
-                    latitude: loc.latitude,
-                    longitude: loc.longitude,
-                  }}
-                  title="Ubicación"
-                  description={
-                    loc.building
-                      ? `Edificio: ${
-                          buildings.find((b) => b.id === loc.building?.id)?.name
-                        }${loc.floor ? ` — Piso ${loc.floor}` : ""}`
-                      : "Zona exterior"
-                  }
-                />
-              ))}
+              {incidentLocations.map((loc) => {
+                const matchedBuilding = buildings.find((b) => String(b.id) === String(loc.building?.id));
+                const buildingName = getBuildingName(matchedBuilding || loc.building);
+
+                return (
+                  <Marker
+                    key={loc.id}
+                    coordinate={{
+                      latitude: loc.latitude,
+                      longitude: loc.longitude,
+                    }}
+                    tracksViewChanges
+                    title="Ubicación"
+                    description={
+                      loc.building
+                        ? `Edificio: ${buildingName}${loc.floor ? ` — Piso ${loc.floor}` : ""}`
+                        : "Zona exterior"
+                    }
+                  />
+                );
+              })}
 
               {buildings.map(
-                (b) =>
-                  b.lat &&
-                  b.lon && (
-                    <Marker
-                      key={`building-${b.id}`}
-                      coordinate={{ latitude: b.lat, longitude: b.lon }}
-                      anchor={{ x: 0.4, y: 0.22 }}
-                    >
+                (b) => {
+                  const latitude = getBuildingLatitude(b);
+                  const longitude = getBuildingLongitude(b);
+                  const buildingName = getBuildingName(b);
+
+                  return latitude != null && longitude != null ? (
+                  <Marker
+                    key={`building-${b.id}`}
+                    coordinate={{ latitude, longitude }}
+                    anchor={{ x: 0.5, y: 0.5 }}
+                    tracksViewChanges
+                  >
+                    <View style={styles.buildingMarkerWrap}>
                       <View style={styles.buildingLabel}>
-                        <Text numberOfLines={1} style={styles.buildingLabelText}>
-                          {b.name}
+                        <Text
+                          numberOfLines={1}
+                          style={styles.buildingLabelText}
+                        >
+                          {buildingName}
                         </Text>
                       </View>
-                    </Marker>
-                  ),
+                    </View>
+                  </Marker>
+                  ) : null;
+                },
               )}
             </MapView>
           ) : (
@@ -278,14 +309,21 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   buildingLabel: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+    backgroundColor: "rgba(0,0,0,0.62)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    maxWidth: 160,
+  },
+  buildingMarkerWrap: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   buildingLabelText: {
-    color: "orange",
-    fontWeight: "bold",
+    color: "#fff",
+    fontWeight: "700",
     fontSize: 12,
+    textAlign: "center",
   },
   centerButton: {
     position: "absolute",

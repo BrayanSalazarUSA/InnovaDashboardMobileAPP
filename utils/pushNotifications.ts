@@ -3,7 +3,7 @@ import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
 
 const STORED_TOKEN_KEY = "innova_expo_push_token";
-export const PROTOCOL_ALERTS_CHANNEL_ID = "protocol-alerts-v3";
+export const PROTOCOL_ALERTS_CHANNEL_ID = "protocol-alerts-v4";
 export const PROTOCOL_ALERT_SOUND = "protocol-rington.wav";
 
 type NotificationsModule = typeof import("expo-notifications");
