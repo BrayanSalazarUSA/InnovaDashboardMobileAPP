@@ -3,6 +3,8 @@ import { Drawer } from "expo-router/drawer";
 import { useState } from "react";
 import { Image, Text, TouchableOpacity, View } from "react-native";
 
+import { getAppVersionLabel } from "../../utils/diagnostics";
+
 export default function DrawerLayout() {
   const [dark, setDark] = useState(false);
 
@@ -20,15 +22,27 @@ export default function DrawerLayout() {
               source={require("../../assets/images/logo.png")}
               style={{ width: 28, height: 28, marginRight: 10 }}
             />
-            <Text
-              style={{
-                fontSize: 18,
-                fontWeight: "600",
-                color: dark ? "#fff" : "white",
-              }}
-            >
-              Innova Dashboard App
-            </Text>
+            <View>
+              <Text
+                style={{
+                  fontSize: 18,
+                  fontWeight: "600",
+                  color: dark ? "#fff" : "white",
+                }}
+              >
+                Innova Dashboard App
+              </Text>
+              <Text
+                style={{
+                  marginTop: 1,
+                  fontSize: 11,
+                  fontWeight: "600",
+                  color: dark ? "#E7D28B" : "rgba(255,255,255,0.82)",
+                }}
+              >
+                {getAppVersionLabel()}
+              </Text>
+            </View>
           </View>
         ),
         headerRight: () => (

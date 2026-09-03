@@ -52,6 +52,7 @@ export default function ImageUploader({
         uri: a.uri,
         type: a.mimeType || "image/jpeg",
         name: a.fileName || `evidence_${Date.now()}.jpg`,
+        file: a.file,
         isRemote: false,
       }));
 

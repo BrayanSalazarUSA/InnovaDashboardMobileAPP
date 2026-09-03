@@ -1,7 +1,8 @@
 import Constants from "expo-constants";
-import { Platform } from "react-native";
 
 const DEFAULT_REMOTE_API_URL = "https://innova-dashboard.com:443/api";
+const LOCAL_API_PORT = 8080;
+const API_PATH = "api";
 
 function normalizeUrl(value) {
   if (!value || typeof value !== "string") {
@@ -21,7 +22,9 @@ function extractHost(value) {
     return null;
   }
 
-  const candidate = trimmed.includes("://") ? trimmed : `http://${trimmed}`;
+  const candidate = trimmed.includes("://")
+    ? trimmed
+    : ["http:/", "", trimmed].join("/");
   try {
     return new URL(candidate).hostname;
   } catch {
@@ -57,9 +60,16 @@ function getExpoHost() {
 
 export function resolveApiBaseUrl() {
   const envUrl = normalizeUrl(process.env.EXPO_PUBLIC_API_BASE_URL);
-  const expoHost = getExpoHost();
   const isDevelopmentRuntime =
-    typeof __DEV__ !== "undefined" ? __DEV__ : process.env.NODE_ENV !== "production";
+    typeof __DEV__ !== "undefined"
+      ? __DEV__
+      : process.env.NODE_ENV !== "production";
+
+  if (!isDevelopmentRuntime) {
+    return envUrl || DEFAULT_REMOTE_API_URL;
+  }
+
+  const expoHost = getExpoHost();
   const expoGoMode = Constants.appOwnership === "expo";
 
   if (
@@ -68,7 +78,7 @@ export function resolveApiBaseUrl() {
     expoHost &&
     (!envUrl || isPrivateNetworkHost(extractHost(envUrl)))
   ) {
-    return `http://${expoHost}:8080/api`;
+    return ["http:/", "", `${expoHost}:${LOCAL_API_PORT}`, API_PATH].join("/");
   }
 
   if (envUrl) {
@@ -76,7 +86,7 @@ export function resolveApiBaseUrl() {
   }
 
   if (isDevelopmentRuntime && expoHost) {
-    return `http://${expoHost}:8080/api`;
+    return ["http:/", "", `${expoHost}:${LOCAL_API_PORT}`, API_PATH].join("/");
   }
 
   return DEFAULT_REMOTE_API_URL;

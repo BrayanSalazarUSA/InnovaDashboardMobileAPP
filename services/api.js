@@ -1,10 +1,164 @@
 import { runWithCacheFallback } from "@/utils/apiCache";
 import { fetchWithRetry } from "@/utils/fetchWithRetry";
 import { resolveApiBaseUrl } from "@/utils/apiBaseUrl";
+import { Platform } from "react-native";
 
 const API_URL = resolveApiBaseUrl();
 const CATALOG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const RECENT_REPORTS_CACHE_TTL_MS = 15 * 60 * 1000;
+const MIN_PENDING_REPORT_EVIDENCES = 2;
+
+function parseApiPayload(raw) {
+  try {
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return raw;
+  }
+}
+
+function getErrorMessageFromPayload(payload) {
+  if (!payload) return null;
+  if (typeof payload === "string") return payload;
+  if (payload.error && payload.details) {
+    return `${payload.error} ${payload.details}`;
+  }
+  return payload.message || payload.error || payload.details || null;
+}
+
+function normalizeNetworkErrorMessage(error) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+
+  if (/network request failed|failed to fetch|networkerror/i.test(message)) {
+    return "No se pudo conectar con el servidor. Revisa la conexión a internet o WiFi e intenta enviar el reporte nuevamente.";
+  }
+
+  if (/timeout|timed out|aborted/i.test(message)) {
+    return "La subida tardó demasiado. Revisa la conexión WiFi o datos móviles e intenta nuevamente. El reporte se mantiene guardado en este formulario.";
+  }
+
+  return message || "No se pudo enviar el reporte. Revisa la información e intenta nuevamente.";
+}
+
+function buildPendingReportPayload(data) {
+  const date = new Date();
+  const formattedDate = (d) =>
+    d.toLocaleDateString("es-CO", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
+
+  return {
+    property: data.property,
+    contributedBy: data.contributedBy,
+    caseType: data.caseType,
+    incidentDate: formattedDate(date),
+    incidentStartTime: data.incidentStartTime,
+    incidentEndTime: data.incidentEndTime,
+    followings: data.followings,
+    priority: data.priority,
+    policeFirstResponderNotified: data.policeFirstResponderNotified ?? false,
+    policeFirstResponderScene: data.policeFirstResponderNotified
+      ? data.policeFirstResponderScene
+      : null,
+    reportDetails: data.reportDetails,
+    incidentLocations: (data.incidentLocations || []).map((loc) => ({
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+      floor: loc.floor ?? null,
+      building: loc.building ? { id: loc.building.id } : null,
+    })),
+  };
+}
+
+function inferEvidenceType(file) {
+  const providedType = file?.type?.trim();
+  if (providedType) return providedType;
+
+  const source = `${file?.name || file?.uri || ""}`.toLowerCase();
+  if (source.includes(".png")) return "image/png";
+  if (source.includes(".webp")) return "image/webp";
+  if (source.includes(".heic")) return "image/heic";
+  if (source.includes(".heif")) return "image/heif";
+  if (source.includes(".mp4")) return "video/mp4";
+  if (source.includes(".mov")) return "video/quicktime";
+  return "image/jpeg";
+}
+
+function inferEvidenceName(file, index) {
+  const rawName =
+    file?.name ||
+    file?.uri?.split(/[\\/]/).pop()?.split("?")[0] ||
+    `evidence_${index}.jpg`;
+
+  return rawName.trim().replace(/\s+/g, "_") || `evidence_${index}.jpg`;
+}
+
+function normalizeEvidenceFiles(evidences = []) {
+  return evidences
+    .filter((file) => file?.uri)
+    .map((file, index) => ({
+      uri: file.uri,
+      type: inferEvidenceType(file),
+      name: inferEvidenceName(file, index),
+      file: file.file,
+    }));
+}
+
+async function resolveWebEvidenceBlob(file) {
+  if (typeof Blob !== "undefined" && file?.file instanceof Blob) {
+    return file.file;
+  }
+
+  if (!file?.uri || typeof fetch !== "function") {
+    return null;
+  }
+
+  if (
+    file.uri.startsWith("blob:") ||
+    file.uri.startsWith("data:") ||
+    file.uri.startsWith("http")
+  ) {
+    const response = await fetch(file.uri);
+    if (!response.ok) {
+      throw new Error(
+        `No se pudo leer la evidencia ${file.name || ""} antes de enviarla.`,
+      );
+    }
+    return await response.blob();
+  }
+
+  return null;
+}
+
+async function appendEvidenceToFormData(formData, file, index) {
+  const name = file.name || `evidence_${index}.jpg`;
+  const type = file.type || "image/jpeg";
+
+  if (Platform.OS === "web") {
+    const blob = await resolveWebEvidenceBlob(file);
+    if (!blob) {
+      throw new Error(
+        `No se pudo preparar la evidencia ${index + 1} para subirla.`,
+      );
+    }
+
+    formData.append("evidences", blob, name);
+    return;
+  }
+
+  formData.append("evidences", {
+    uri: file.uri,
+    type,
+    name,
+  });
+}
+
+async function appendEvidencesToFormData(formData, evidenceFiles) {
+  for (const [index, file] of evidenceFiles.entries()) {
+    await appendEvidenceToFormData(formData, file, index);
+  }
+}
 
 async function apiFetch(endpoint, options = {}) {
   const url = `${API_URL.replace(/\/$/, "")}/${endpoint.replace(/^\//, "")}`;
@@ -100,95 +254,53 @@ export const ApiService = {
     }
   },
   createReport: async (data) => {
-    const date = new Date();
-    const formattedDate = (d) =>
-      d.toLocaleDateString("es-CO", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      });
-
     try {
-      const reportPayload = {
-        property: data.property,
-        contributedBy: data.contributedBy,
-        caseType: data.caseType,
-        incidentDate: formattedDate(date),
-        incidentStartTime: data.incidentStartTime,
-        incidentEndTime: data.incidentEndTime,
-        followings: data.followings,
-        priority: data.priority,
-        policeFirstResponderNotified:
-          data.policeFirstResponderNotified ?? false,
-        policeFirstResponderScene: data.policeFirstResponderNotified
-          ? data.policeFirstResponderScene
-          : null,
-        reportDetails: data.reportDetails,
-        incidentLocations: data.incidentLocations.map((loc) => ({
-          latitude: loc.latitude,
-          longitude: loc.longitude,
-          floor: loc.floor ?? null,
-          building: loc.building ? { id: loc.building.id } : null,
-        })),
-      };
+      const evidenceFiles = normalizeEvidenceFiles(data.evidences || []);
 
-      const endpoint = `${API_URL}/pending-reports/json`;
-
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Userid: data.contributedBy.id.toString(),
-        },
-        body: JSON.stringify(reportPayload),
-      });
-
-      const textResponse = await response.text();
-
-      let result;
-      try {
-        result = JSON.parse(textResponse);
-      } catch {
-        console.warn(" Respuesta no es JSON válido.");
-        result = textResponse;
-      }
-
-      if (!response.ok) {
+      if (evidenceFiles.length < MIN_PENDING_REPORT_EVIDENCES) {
         throw new Error(
-          `Error HTTP ${response.status}: ${JSON.stringify(result)}`,
+          `Debes adjuntar al menos ${MIN_PENDING_REPORT_EVIDENCES} evidencias antes de enviar el reporte.`,
         );
       }
 
-      const reportId = result?.reportId;
-      const failedEvidenceCount =
-        reportId && data.evidences?.length > 0
-          ? await ApiService.uploadPendingEvidencesSafely(
-              reportId,
-              data.evidences,
-              data.contributedBy.id,
-            )
-          : 0;
+      const formData = new FormData();
+      formData.append(
+        "pendingReport",
+        JSON.stringify(buildPendingReportPayload(data)),
+      );
+      await appendEvidencesToFormData(formData, evidenceFiles);
 
-      return {
-        ...result,
-        failedEvidenceCount,
-      };
+      const response = await fetch(`${API_URL}/pending-reports`, {
+        method: "POST",
+        headers: {
+          Userid: data.contributedBy.id.toString(),
+        },
+        body: formData,
+      });
+
+      const textResponse = await response.text();
+      const result = parseApiPayload(textResponse);
+
+      if (!response.ok) {
+        const backendMessage = getErrorMessageFromPayload(result);
+        throw new Error(
+          backendMessage ||
+            `Error HTTP ${response.status}: ${JSON.stringify(result)}`,
+        );
+      }
+
+      return result;
     } catch (error) {
       console.error("Error completo al enviar reporte:", error);
-      throw error;
+      throw new Error(normalizeNetworkErrorMessage(error));
     }
   },
   addPendingEvidences: async (reportId, evidences, userId) => {
     try {
       const formData = new FormData();
+      const evidenceFiles = normalizeEvidenceFiles(evidences);
 
-      evidences.forEach((file, index) => {
-        formData.append("evidences", {
-          uri: file.uri,
-          type: file.type || "image/jpeg",
-          name: file.name || `evidence_${index}.jpg`,
-        });
-      });
+      await appendEvidencesToFormData(formData, evidenceFiles);
 
       const response = await fetch(
         `${API_URL}/pending-reports/${reportId}/asignar-evidencia`,
@@ -236,8 +348,8 @@ export const ApiService = {
               [
                 {
                   uri: file.uri,
-                  type: file.type || "image/jpeg",
-                  name: file.name || `evidence_${index}.jpg`,
+                  type: inferEvidenceType(file),
+                  name: inferEvidenceName(file, index),
                 },
               ],
               userId,

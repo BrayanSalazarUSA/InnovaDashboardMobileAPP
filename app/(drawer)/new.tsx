@@ -46,8 +46,38 @@ export type ReportImage = {
   uri: string;
   type?: string;
   name?: string;
+  file?: unknown;
   isRemote: boolean; //  clave
 };
+
+type FormFeedback = {
+  title: string;
+  message: string;
+  actionLabel: string;
+  icon: keyof typeof MaterialCommunityIcons.glyphMap;
+};
+
+function cleanSubmitErrorMessage(rawMessage?: string) {
+  const fallback =
+    "No se pudo enviar el reporte. Revisa la información e intenta nuevamente.";
+  if (!rawMessage) return fallback;
+
+  const jsonMatch = rawMessage.match(/\{.*\}/s);
+  if (jsonMatch) {
+    try {
+      const payload = JSON.parse(jsonMatch[0]);
+      return payload.details || payload.error || payload.message || fallback;
+    } catch {
+      // Keep the cleaner fallback below if the backend text is not valid JSON.
+    }
+  }
+
+  if (/detalles.*reporte.*vac/i.test(rawMessage)) {
+    return "Agrega una descripción breve del incidente antes de enviar el reporte.";
+  }
+
+  return rawMessage.replace(/^Error HTTP \d+:\s*/i, "").trim() || fallback;
+}
 
 export default function NewReport() {
   const router = useRouter();
@@ -90,10 +120,14 @@ export default function NewReport() {
   const [propertyConfirmSearch, setPropertyConfirmSearch] = useState("");
   const [propertyConfirmSelection, setPropertyConfirmSelection] =
     useState<string>("");
+  const [evidenceRequirementVisible, setEvidenceRequirementVisible] =
+    useState(false);
+  const [formFeedback, setFormFeedback] = useState<FormFeedback | null>(null);
 
   const [images, setImages] = useState<ReportImage[]>([]);
 
   const scrollRef = useRef<ScrollView>(null);
+  const validEvidenceCount = images.filter((image) => Boolean(image.uri)).length;
 
   const hasMeaningfulChanges = useCallback(() => {
     return (
@@ -458,6 +492,17 @@ export default function NewReport() {
   ========================== */
   const performSubmit = useCallback(
     async (confirmedPropertyId: string) => {
+      if (!description.trim()) {
+        setFormFeedback({
+          title: "Falta la descripción",
+          message:
+            "Escribe un resumen breve del incidente. Puede ser corto, pero necesitamos ese detalle para guardar el reporte correctamente.",
+          actionLabel: "Completar descripción",
+          icon: "note-text-outline",
+        });
+        return;
+      }
+
       if (policeFirstResponderNotified && !policeFirstResponderScene) {
         Alert.alert(
           "Información requerida",
@@ -577,7 +622,12 @@ export default function NewReport() {
         resetForm();
         router.replace("/(drawer)");
       } catch (e: any) {
-        Alert.alert("Error", e.message || "No se pudo enviar el reporte");
+        setFormFeedback({
+          title: "No se pudo enviar",
+          message: cleanSubmitErrorMessage(e?.message),
+          actionLabel: "Revisar reporte",
+          icon: "alert-circle-outline",
+        });
       } finally {
         setSubmitting(false);
       }
@@ -605,8 +655,13 @@ export default function NewReport() {
   );
 
   const handleSubmitPress = useCallback(() => {
+    if (!isEditMode && validEvidenceCount < 2) {
+      setEvidenceRequirementVisible(true);
+      return;
+    }
+
     openPropertyConfirmation();
-  }, [openPropertyConfirmation]);
+  }, [isEditMode, openPropertyConfirmation, validEvidenceCount]);
 
   const handleConfirmPropertyAndSubmit = useCallback(() => {
     const confirmedPropertyId = propertyConfirmSelection;
@@ -981,6 +1036,102 @@ export default function NewReport() {
           </ScrollView>
         </ImageBackground>
       </View>
+
+      <Modal
+        visible={evidenceRequirementVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEvidenceRequirementVisible(false)}
+      >
+        <View className="flex-1 justify-center bg-black/60 px-5">
+          <View className="overflow-hidden rounded-[30px] border border-[#E8D9A3] bg-white shadow-2xl">
+            <View className="bg-[#FFF8E6] px-6 py-6">
+              <View className="h-16 w-16 items-center justify-center rounded-3xl bg-white border border-[#F2DEA2] shadow-sm">
+                <MaterialCommunityIcons
+                  name="camera-plus-outline"
+                  size={34}
+                  color="#A67C00"
+                />
+              </View>
+
+              <Text className="mt-5 text-[11px] font-bold uppercase tracking-[0.28em] text-[#A67C00]">
+                Evidencias requeridas
+              </Text>
+              <Text className="mt-2 text-[26px] font-extrabold leading-8 text-[#0F172A]">
+                Agrega al menos 2 fotos
+              </Text>
+              <Text className="mt-3 text-base leading-6 text-[#475569]">
+                Para enviar un reporte pendiente necesitamos mínimo dos
+                evidencias. Tu formulario sigue guardado tal como lo tienes.
+              </Text>
+            </View>
+
+            <View className="px-6 py-5">
+              <View className="rounded-2xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
+                <Text className="text-sm font-semibold text-[#0F172A]">
+                  Evidencias actuales
+                </Text>
+                <Text className="mt-1 text-sm text-[#64748B]">
+                  {validEvidenceCount}/2 listas para enviar
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setEvidenceRequirementVisible(false)}
+                activeOpacity={0.9}
+                className="mt-5 rounded-2xl bg-[#006bb3] py-4"
+              >
+                <Text className="text-center text-base font-bold text-white">
+                  Agregar evidencias
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={Boolean(formFeedback)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFormFeedback(null)}
+      >
+        <View className="flex-1 justify-center bg-black/60 px-5">
+          <View className="overflow-hidden rounded-[30px] border border-[#E8D9A3] bg-white shadow-2xl">
+            <View className="bg-[#FFF8E6] px-6 py-6">
+              <View className="h-16 w-16 items-center justify-center rounded-3xl border border-[#F2DEA2] bg-white shadow-sm">
+                <MaterialCommunityIcons
+                  name={formFeedback?.icon || "alert-circle-outline"}
+                  size={34}
+                  color="#A67C00"
+                />
+              </View>
+
+              <Text className="mt-5 text-[11px] font-bold uppercase tracking-[0.28em] text-[#A67C00]">
+                Información requerida
+              </Text>
+              <Text className="mt-2 text-[25px] font-extrabold leading-8 text-[#0F172A]">
+                {formFeedback?.title}
+              </Text>
+              <Text className="mt-3 text-base leading-6 text-[#475569]">
+                {formFeedback?.message}
+              </Text>
+            </View>
+
+            <View className="px-6 py-5">
+              <TouchableOpacity
+                onPress={() => setFormFeedback(null)}
+                activeOpacity={0.9}
+                className="rounded-2xl bg-[#006bb3] py-4"
+              >
+                <Text className="text-center text-base font-bold text-white">
+                  {formFeedback?.actionLabel || "Revisar reporte"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={propertyConfirmVisible}
