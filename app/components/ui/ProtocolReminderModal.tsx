@@ -32,11 +32,19 @@ type Monitor = {
   email?: string;
 };
 
+type PropertyOption = {
+  id: number | string;
+  name?: string;
+  label?: string;
+  address?: string;
+};
+
 type Props = {
   visible: boolean;
   onClose: () => void;
   protocol: Protocol;
   monitors: Monitor[];
+  properties?: PropertyOption[];
   onSave: (
     answer: "sí" | "no",
     note: string,
@@ -49,15 +57,20 @@ export default function ProtocolReminderModal({
   onClose,
   protocol,
   monitors,
+  properties = [],
   onSave,
 }: Props) {
   const [answer, setAnswer] = useState<"sí" | "no" | null>(null);
   const [note, setNote] = useState("");
   const [selectedMonitor, setSelectedMonitor] = useState<Monitor | null>(null);
+  const [selectedPropertyIds, setSelectedPropertyIds] = useState<string[]>([]);
   const [currentTime, setCurrentTime] = useState("");
   const [searchMonitor, setSearchMonitor] = useState("");
+  const [propertySearch, setPropertySearch] = useState("");
   const [showResponsableModal, setShowResponsableModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showPropertySelectorModal, setShowPropertySelectorModal] =
+    useState(false);
   const [showSuccessState, setShowSuccessState] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -98,14 +111,63 @@ export default function ProtocolReminderModal({
     });
   }, [protocol.scheduledFor]);
 
+  const getPropertyLabel = React.useCallback(
+    (property: PropertyOption) =>
+      property?.name ||
+      property?.label ||
+      property?.address ||
+      `Propiedad ${property?.id ?? ""}`.trim(),
+    [],
+  );
+
+  const propertyOptions = useMemo(
+    () =>
+      properties.map((property) => ({
+        ...property,
+        label: getPropertyLabel(property),
+      })),
+    [properties, getPropertyLabel],
+  );
+
+  const filteredPropertyOptions = useMemo(() => {
+    const search = propertySearch.trim().toLowerCase();
+    if (!search) {
+      return propertyOptions;
+    }
+
+    return propertyOptions.filter((property) =>
+      String(property.label).toLowerCase().includes(search),
+    );
+  }, [propertyOptions, propertySearch]);
+
+  const selectedProperties = useMemo(() => {
+    const selected = new Set(selectedPropertyIds.map(String));
+    return propertyOptions
+      .filter((property) => selected.has(String(property.id)))
+      .map((property) => ({
+        id: String(property.id),
+        label: property.label || `Propiedad ${property.id}`,
+      }));
+  }, [propertyOptions, selectedPropertyIds]);
+
+  const selectedPropertyLabels = useMemo(
+    () => selectedProperties.map((property) => property.label),
+    [selectedProperties],
+  );
+
+  const selectedPropertyCount = selectedPropertyLabels.length;
+
   useEffect(() => {
     if (visible) {
       setAnswer(null);
       setNote("");
       setSelectedMonitor(null);
+      setSelectedPropertyIds([]);
       setSearchMonitor("");
+      setPropertySearch("");
       setShowResponsableModal(false);
       setShowConfirmModal(false);
+      setShowPropertySelectorModal(false);
       setShowSuccessState(false);
       setIsSubmitting(false);
       setErrorMessage(null);
@@ -155,6 +217,39 @@ export default function ProtocolReminderModal({
 
   const readyToSelectResponsable = answer !== null;
 
+  const toggleProperty = (propertyId: string) => {
+    setSelectedPropertyIds((current) =>
+      current.includes(propertyId)
+        ? current.filter((id) => id !== propertyId)
+        : [...current, propertyId],
+    );
+  };
+
+  const removeProperty = (propertyId: string) => {
+    setSelectedPropertyIds((current) =>
+      current.filter((id) => id !== propertyId),
+    );
+  };
+
+  const buildResponseNote = () => {
+    const trimmedNote = note.trim();
+
+    if (selectedPropertyCount === 0) {
+      return trimmedNote;
+    }
+
+    const propertyBlock = [
+      `Propiedades escaneadas (${selectedPropertyCount}):`,
+      ...selectedPropertyLabels.map((label) => `- ${label}`),
+    ].join("\n");
+
+    if (!trimmedNote) {
+      return propertyBlock;
+    }
+
+    return `${propertyBlock}\n\n${trimmedNote}`;
+  };
+
   const handleSendClick = () => {
     if (answer) {
       setShowResponsableModal(true);
@@ -177,7 +272,7 @@ export default function ProtocolReminderModal({
       setErrorMessage(null);
 
       try {
-        await onSave(answer, note.trim(), selectedMonitor.name);
+        await onSave(answer, buildResponseNote(), selectedMonitor.name);
         void Haptics.notificationAsync(
           Haptics.NotificationFeedbackType.Success,
         );
@@ -388,6 +483,49 @@ export default function ProtocolReminderModal({
                 </View>
               </View>
 
+              <View className="mb-4 rounded-[22px] border border-[#DBEAFE] bg-[#F8FBFF] px-4 py-3">
+                <View className="flex-row items-center justify-between gap-3">
+                  <Text className="flex-1 text-sm font-semibold text-[#111827]">
+                    Propiedades escaneadas
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setShowPropertySelectorModal(true)}
+                    className="rounded-2xl border border-[#BFDBFE] bg-white px-4 py-2"
+                  >
+                    <Text className="text-xs font-semibold text-[#1D4ED8]">
+                      {selectedPropertyCount > 0
+                        ? `Editar (${selectedPropertyCount})`
+                        : "Seleccionar"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {selectedPropertyCount > 0 ? (
+                  <View className="mt-3 flex-row flex-wrap gap-2">
+                    {selectedProperties.slice(0, 3).map((property) => (
+                      <View
+                        key={property.id}
+                        className="h-7 max-w-[132px] justify-center rounded-full bg-[#EFF6FF] border border-[#BFDBFE] px-2.5"
+                      >
+                        <Text
+                          className="text-[11px] font-semibold text-[#1D4ED8]"
+                          numberOfLines={1}
+                        >
+                          {property.label}
+                        </Text>
+                      </View>
+                    ))}
+                    {selectedPropertyCount > 3 ? (
+                      <View className="h-7 justify-center rounded-full bg-[#EEF2FF] border border-[#C7D2FE] px-2.5">
+                        <Text className="text-[11px] font-semibold text-[#4F46E5]">
+                          +{selectedPropertyCount - 3} más
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+              </View>
+
               <View className="mb-4 rounded-[24px] border border-[#E5E7EB] bg-white p-4">
                 <View className="flex-row items-center justify-between mb-3">
                   <View>
@@ -473,6 +611,178 @@ export default function ProtocolReminderModal({
               </View>
             </ScrollView>
           </Animated.View>
+
+          <Modal
+            visible={showPropertySelectorModal}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowPropertySelectorModal(false)}
+          >
+            <KeyboardAvoidingView
+              className="flex-1"
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
+            >
+              <View className="flex-1 bg-black/60 justify-end">
+                <Pressable
+                  onPress={() => setShowPropertySelectorModal(false)}
+                  style={{ position: "absolute", inset: 0 }}
+                />
+                <View
+                  className="w-full rounded-t-[30px] border border-[#DBEAFE] bg-white px-5 pt-5 shadow-xl"
+                  style={{ height: "92%" }}
+                >
+                  <View className="mb-3 flex-row items-start justify-between gap-3">
+                    <View className="flex-1">
+                      <Text className="text-lg font-bold text-[#111827]">
+                        Seleccionar propiedades
+                      </Text>
+                      <Text className="mt-1 text-xs font-semibold text-[#1D4ED8]">
+                        {selectedPropertyCount} seleccionadas
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setSelectedPropertyIds([])}
+                      disabled={selectedPropertyCount === 0}
+                      className={`rounded-full px-3 py-1.5 ${
+                        selectedPropertyCount > 0 ? "bg-[#F8FAFC]" : "bg-white"
+                      }`}
+                    >
+                      <Text
+                        className={`text-xs font-semibold ${
+                          selectedPropertyCount > 0
+                            ? "text-[#64748B]"
+                            : "text-[#CBD5E1]"
+                        }`}
+                      >
+                        Limpiar
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {selectedPropertyCount > 0 ? (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                      className="mb-3 max-h-8"
+                      style={{ height: 32 }}
+                      contentContainerStyle={{ gap: 8, paddingRight: 6 }}
+                    >
+                      {selectedProperties.map((property) => (
+                        <TouchableOpacity
+                          key={property.id}
+                          onPress={() => removeProperty(property.id)}
+                          activeOpacity={0.78}
+                          className="h-7 w-[136px] flex-row items-center gap-1 rounded-full border border-[#BFDBFE] bg-[#EFF6FF] px-2.5"
+                        >
+                          <Text
+                            className="w-[108px] text-[11px] font-semibold text-[#1D4ED8]"
+                            numberOfLines={1}
+                          >
+                            {property.label}
+                          </Text>
+                          <Ionicons name="close" size={13} color="#1D4ED8" />
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  ) : null}
+
+                  <View className="mb-3 flex-row items-center gap-2 rounded-2xl border border-[#BFDBFE] bg-[#F8FBFF] px-3 py-3">
+                    <MaterialCommunityIcons
+                      name="magnify"
+                      size={18}
+                      color="#1D4ED8"
+                    />
+                    <TextInput
+                      value={propertySearch}
+                      onChangeText={setPropertySearch}
+                      placeholder="Buscar propiedad..."
+                      placeholderTextColor="#94A3B8"
+                      className="flex-1 text-base text-[#111827]"
+                      autoCorrect={false}
+                      returnKeyType="search"
+                    />
+                    {propertySearch ? (
+                      <TouchableOpacity onPress={() => setPropertySearch("")}>
+                        <Ionicons
+                          name="close-circle"
+                          size={18}
+                          color="#94A3B8"
+                        />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+
+                  <ScrollView
+                    className="flex-1"
+                    showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    contentContainerStyle={{ paddingBottom: 16 }}
+                  >
+                    {filteredPropertyOptions.length === 0 ? (
+                      <Text className="py-8 text-center text-sm text-[#6B7280]">
+                        No hay propiedades con ese nombre.
+                      </Text>
+                    ) : (
+                      filteredPropertyOptions.map((property) => {
+                        const propertyId = String(property.id);
+                        const isSelected =
+                          selectedPropertyIds.includes(propertyId);
+
+                        return (
+                          <TouchableOpacity
+                            key={propertyId}
+                            onPress={() => toggleProperty(propertyId)}
+                            className={`mb-2 flex-row items-center justify-between rounded-2xl border px-4 py-3 ${
+                              isSelected
+                                ? "border-[#1D4ED8] bg-[#EFF6FF]"
+                                : "border-[#E5E7EB] bg-white"
+                            }`}
+                          >
+                            <View className="flex-1 pr-3">
+                              <Text className="text-sm font-semibold text-[#111827]">
+                                {property.label}
+                              </Text>
+                              {property.address ? (
+                                <Text
+                                  className="mt-1 text-xs text-[#64748B]"
+                                  numberOfLines={1}
+                                >
+                                  {property.address}
+                                </Text>
+                              ) : null}
+                            </View>
+                            {isSelected ? (
+                              <View className="h-7 w-7 items-center justify-center rounded-full border border-[#BFDBFE] bg-white">
+                                <Ionicons
+                                  name="close"
+                                  size={15}
+                                  color="#1D4ED8"
+                                />
+                              </View>
+                            ) : (
+                              <View className="h-7 w-7 rounded-full border border-[#CBD5E1] bg-white" />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })
+                    )}
+                  </ScrollView>
+
+                  <TouchableOpacity
+                    onPress={() => setShowPropertySelectorModal(false)}
+                    className="mb-4 mt-2 rounded-2xl bg-[#006bb3] px-4 py-3"
+                  >
+                    <Text className="text-center font-semibold text-white">
+                      Hecho
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </KeyboardAvoidingView>
+          </Modal>
 
           {showSuccessState ? (
             <Animated.View
@@ -644,6 +954,11 @@ export default function ProtocolReminderModal({
                     <Text className="text-base font-semibold text-[#111827] text-center mt-3">
                       {selectedMonitor?.name}
                     </Text>
+                    {selectedPropertyCount > 0 ? (
+                      <Text className="mt-3 text-center text-xs leading-5 text-[#475569]">
+                        Propiedades: {selectedPropertyLabels.join(", ")}
+                      </Text>
+                    ) : null}
                   </View>
 
                   <TouchableOpacity

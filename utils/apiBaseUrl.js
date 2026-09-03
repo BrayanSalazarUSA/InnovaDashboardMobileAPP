@@ -58,9 +58,16 @@ function getExpoHost() {
 export function resolveApiBaseUrl() {
   const envUrl = normalizeUrl(process.env.EXPO_PUBLIC_API_BASE_URL);
   const expoHost = getExpoHost();
-  const expoGoMode = Constants.appOwnership === "expo" || Platform.OS !== "web";
+  const isDevelopmentRuntime =
+    typeof __DEV__ !== "undefined" ? __DEV__ : process.env.NODE_ENV !== "production";
+  const expoGoMode = Constants.appOwnership === "expo";
 
-  if (expoGoMode && expoHost && (!envUrl || isPrivateNetworkHost(extractHost(envUrl)))) {
+  if (
+    isDevelopmentRuntime &&
+    expoGoMode &&
+    expoHost &&
+    (!envUrl || isPrivateNetworkHost(extractHost(envUrl)))
+  ) {
     return `http://${expoHost}:8080/api`;
   }
 
@@ -68,10 +75,9 @@ export function resolveApiBaseUrl() {
     return envUrl;
   }
 
-  if (expoHost) {
+  if (isDevelopmentRuntime && expoHost) {
     return `http://${expoHost}:8080/api`;
   }
 
   return DEFAULT_REMOTE_API_URL;
 }
-

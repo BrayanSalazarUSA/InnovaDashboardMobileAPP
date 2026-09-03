@@ -1,7 +1,7 @@
 import { ReportImage } from "@/app/(drawer)/new";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
-import React, { useEffect } from "react";
+import React from "react";
 import {
   Alert,
   Dimensions,
@@ -29,22 +29,6 @@ export default function ImageUploader({
   maxImages = 10,
 }: Props) {
   /* =========================
-     🔍 LOGS DE RENDER
-  ========================== */
-  useEffect(() => {
-    console.log("🧩 [ImageUploader] render");
-    console.log("🧩 Total imágenes:", images.length);
-
-    images.forEach((img, i) => {
-      console.log(
-        `🧩 Image[${i}]`,
-        img.isRemote ? "[REMOTE]" : "[LOCAL]",
-        img.uri,
-      );
-    });
-  }, [images]);
-
-  /* =========================
      📸 PICK IMAGE
   ========================== */
   const pickImage = async () => {
@@ -64,15 +48,12 @@ export default function ImageUploader({
     });
 
     if (!result.canceled) {
-      const newImages: ReportImage[] = result.assets.map((a) => {
-        console.log("📸 Imagen local seleccionada:", a.uri);
-        return {
-          uri: a.uri,
-          type: a.mimeType || "image/jpeg",
-          name: a.fileName || `evidence_${Date.now()}.jpg`,
-          isRemote: false,
-        };
-      });
+      const newImages: ReportImage[] = result.assets.map((a) => ({
+        uri: a.uri,
+        type: a.mimeType || "image/jpeg",
+        name: a.fileName || `evidence_${Date.now()}.jpg`,
+        isRemote: false,
+      }));
 
       setImages((prev) => [...prev, ...newImages]);
     }
@@ -83,16 +64,10 @@ export default function ImageUploader({
   const removeImage = async (index: number) => {
     const img = images[index];
 
-    console.log("❌ [ImageUploader] removeImage");
-    console.log("❌ Index:", index);
-    console.log("❌ Imagen:", img);
-
     // Backend si es remota
     if (img.isRemote && onRemoveRemoteImage) {
-      console.log("❌ Eliminando imagen remota en backend:", img.uri);
       try {
         await onRemoveRemoteImage(img);
-        console.log("✅ Imagen eliminada en backend");
       } catch (e) {
         console.error("❌ Error eliminando imagen remota", e);
         Alert.alert("Error", "No se pudo eliminar la imagen del servidor");
@@ -139,13 +114,6 @@ export default function ImageUploader({
             const displayUri = img.isRemote
               ? img.uri + "?v=" + Date.now() // cache-bypass
               : img.uri;
-
-            console.log(
-              "🖼️ [ImageUploader] Render image",
-              i,
-              img.isRemote ? "[REMOTE]" : "[LOCAL]",
-              displayUri,
-            );
 
             return (
               <View

@@ -61,9 +61,7 @@ export default function DeviceIdentitySetupModal({
       <Animated.View style={[styles.backdrop, { opacity }]}>
         <Pressable style={StyleSheet.absoluteFillObject} />
 
-        <Animated.View
-          style={[styles.card, { transform: [{ scale: card }] }]}
-        >
+        <Animated.View style={[styles.card, { transform: [{ scale: card }] }]}>
           <View className="mb-4 flex-row items-start gap-3">
             <View className="h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF7E3] border border-[#E8C56B]">
               <Ionicons name="tablet-landscape" size={22} color="#C77D00" />
@@ -73,7 +71,8 @@ export default function DeviceIdentitySetupModal({
                 Nombra este dispositivo
               </Text>
               <Text className="mt-2 text-sm leading-5 text-[#475569]">
-                Usa algo fácil de reconocer como Mesa 1, Mesa 2 o Recepción. Solo te lo pediremos una vez.
+                Usa algo fácil de reconocer como Mesa 1, Mesa 2 o Recepción.
+                Solo te lo pediremos una vez.
               </Text>
             </View>
           </View>
@@ -102,7 +101,8 @@ export default function DeviceIdentitySetupModal({
 
             <View className="mt-3 flex-row flex-wrap gap-2">
               {SUGGESTIONS.map((suggestion) => {
-                const active = value.trim().toLowerCase() === suggestion.toLowerCase();
+                const active =
+                  value.trim().toLowerCase() === suggestion.toLowerCase();
                 return (
                   <TouchableOpacity
                     key={suggestion}
@@ -127,16 +127,6 @@ export default function DeviceIdentitySetupModal({
           <View className="mt-4 flex-row gap-3">
             <TouchableOpacity
               onPress={() => {
-                if (!canSave || isSaving) {
-                  console.log("[device.identity.modal] save blocked", {
-                    canSave,
-                    isSaving,
-                    valueLength: value.trim().length,
-                  });
-                  return;
-                }
-
-                console.log("[device.identity.modal] save pressed", value.trim());
                 void Haptics.selectionAsync();
                 onSave();
               }}

@@ -75,7 +75,7 @@ export default function ReportDetail() {
 
       const subscription = BackHandler.addEventListener(
         "hardwareBackPress",
-        onBackPress
+        onBackPress,
       );
 
       // Cleanup
@@ -83,10 +83,9 @@ export default function ReportDetail() {
         isActive = false;
         subscription.remove();
       };
-    }, [id, router])
+    }, [id, router]),
   );
   const handleDelete = async () => {
-    console.log("Eliminando reporte");
     Alert.alert(
       "Confirmar eliminación",
       "¿Estás seguro de eliminar este reporte?",
@@ -108,7 +107,7 @@ export default function ReportDetail() {
             }
           },
         },
-      ]
+      ],
     );
   };
 

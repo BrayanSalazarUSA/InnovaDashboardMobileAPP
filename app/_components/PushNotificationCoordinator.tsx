@@ -24,12 +24,6 @@ async function registerTokenWithBackend(params: {
   deviceId: string;
   deviceName: string;
 }) {
-  console.log("[device.identity] registering token", {
-    deviceId: params.deviceId,
-    deviceName: params.deviceName,
-    tokenPreview: params.token.slice(0, 18),
-  });
-
   const response = await fetch(
     `${API_URL.replace(/\/$/, "")}/mobile/push-token`,
     {
@@ -59,7 +53,6 @@ async function registerTokenWithBackend(params: {
     );
   }
 
-  console.log("[device.identity] token registered successfully");
 }
 
 type NotificationPayload = {
@@ -279,18 +272,12 @@ export default function PushNotificationCoordinator() {
   const handleSaveDeviceName = useCallback(async () => {
     const trimmed = deviceName.trim();
     if (trimmed.length < 2 || isSavingIdentity) {
-      console.log("[device.identity] save skipped", {
-        trimmedLength: trimmed.length,
-        isSavingIdentity,
-      });
       return;
     }
 
     setIsSavingIdentity(true);
     try {
-      console.log("[device.identity] saving device name", trimmed);
       const saved = await storeDeviceNameAsync(trimmed);
-      console.log("[device.identity] device name saved", saved);
       setDeviceId(saved.deviceId);
       setDeviceName(saved.deviceName);
       setDeviceSetupVisible(false);
@@ -304,7 +291,6 @@ export default function PushNotificationCoordinator() {
         extra: errorText,
       });
     } finally {
-      console.log("[device.identity] save flow finished");
       setIsSavingIdentity(false);
     }
   }, [deviceName, isSavingIdentity]);

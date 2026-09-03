@@ -7,8 +7,8 @@ import {
   Alert,
   Animated,
   FlatList,
-  Modal,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   Text,
@@ -44,6 +44,13 @@ type Monitor = {
   name: string;
   image?: string;
   email?: string;
+};
+
+type Property = {
+  id: number | string;
+  name?: string;
+  label?: string;
+  address?: string;
 };
 
 type ReminderProtocol = {
@@ -253,13 +260,6 @@ const TimelineRow = React.memo(function TimelineRow({
       : displayStatus === "SCHEDULED"
         ? `Disponible desde las ${hourLabel}`
         : "Toca para responder ahora";
-  const responderName = item.respondedByName || "Respondido";
-  const responderDeviceName =
-    item.respondedByDeviceName || "Dispositivo sin nombre";
-  const contentLabel = isAnswered
-    ? item.responseNote || "Sin detalle adicional."
-    : item.responseNote || "Sin descripción registrada.";
-
   return (
     <TouchableOpacity
       onPress={() => onPress(item)}
@@ -305,26 +305,6 @@ const TimelineRow = React.memo(function TimelineRow({
             <Text className="mt-1 text-sm text-[#475569]" numberOfLines={1}>
               {helperLabel}
             </Text>
-            {isAnswered ? (
-              <>
-                <Text
-                  className="mt-2 text-sm font-semibold text-[#0F172A]"
-                  numberOfLines={1}
-                >
-                  {responderName}
-                </Text>
-                <Text className="mt-1 text-xs text-[#64748B]" numberOfLines={1}>
-                  {responderDeviceName}
-                </Text>
-                <Text className="mt-1 text-xs text-[#64748B]" numberOfLines={2}>
-                  {contentLabel}
-                </Text>
-              </>
-            ) : (
-              <Text className="mt-2 text-xs text-[#64748B]" numberOfLines={1}>
-                {contentLabel}
-              </Text>
-            )}
           </View>
 
           <View
@@ -354,6 +334,7 @@ export default function ProtocolsScreen() {
   }>();
   const [responses, setResponses] = useState<ProtocolExecutionResponse[]>([]);
   const [monitors, setMonitors] = useState<Monitor[]>([]);
+  const [properties, setProperties] = useState<Property[]>([]);
   const [reminderVisible, setReminderVisible] = useState(false);
   const [reminderProtocol, setReminderProtocol] =
     useState<ReminderProtocol | null>(null);
@@ -419,14 +400,7 @@ export default function ProtocolsScreen() {
     try {
       const identity = await getDeviceIdentityAsync();
       const currentExpoPushToken = await getStoredExpoPushTokenAsync();
-      console.log("[protocols.loadResponses] requesting recent responses", {
-        silent,
-        deviceId: identity.deviceId,
-        deviceName: identity.deviceName,
-        expoPushTokenPreview: currentExpoPushToken
-          ? `${currentExpoPushToken.slice(0, 8)}...${currentExpoPushToken.slice(-4)}`
-          : null,
-      });
+
       const all = await ProtocolsApi.recentResponses(168, {
         userId: MONITOR_USER_ID,
         role: MONITOR_ROLE,
@@ -434,10 +408,7 @@ export default function ProtocolsScreen() {
         expoPushToken: currentExpoPushToken,
         deviceName: identity.deviceName,
       });
-      console.log("[protocols.loadResponses] backend response", {
-        count: Array.isArray(all) ? all.length : null,
-        sample: Array.isArray(all) ? all.slice(0, 3) : all,
-      });
+
       const normalized = Array.isArray(all) ? all : [];
       setResponses(normalized);
     } catch (error) {
@@ -464,6 +435,20 @@ export default function ProtocolsScreen() {
       recordDiagnostic({
         source: "protocols.loadMonitors",
         message: "No se pudieron cargar los monitores.",
+        error,
+      });
+    }
+  }, []);
+
+  const loadProperties = useCallback(async () => {
+    try {
+      const data = await ApiService.getProperties();
+      const normalized = Array.isArray(data) ? data : [];
+      setProperties(normalized);
+    } catch (error) {
+      recordDiagnostic({
+        source: "protocols.loadProperties",
+        message: "No se pudieron cargar las propiedades.",
         error,
       });
     }
@@ -541,6 +526,10 @@ export default function ProtocolsScreen() {
   }, [loadMonitors]);
 
   useEffect(() => {
+    void loadProperties();
+  }, [loadProperties]);
+
+  useEffect(() => {
     return () => {
       if (saveNoticeTimeoutRef.current) {
         clearTimeout(saveNoticeTimeoutRef.current);
@@ -610,16 +599,7 @@ export default function ProtocolsScreen() {
       try {
         const identity = await getDeviceIdentityAsync();
         const expoPushToken = await getStoredExpoPushTokenAsync();
-        console.log("[protocols.handleReminderSave] sending response", {
-          executionId,
-          answer,
-          respondedBy,
-          deviceId: identity.deviceId,
-          deviceName: identity.deviceName,
-          expoPushTokenPreview: expoPushToken
-            ? `${expoPushToken.slice(0, 8)}...${expoPushToken.slice(-4)}`
-            : null,
-        });
+
         await ProtocolsApi.respond(
           executionId,
           {
@@ -632,11 +612,6 @@ export default function ProtocolsScreen() {
           },
           { userId: MONITOR_USER_ID, role: MONITOR_ROLE },
         );
-        console.log("[protocols.handleReminderSave] response sent", {
-          executionId,
-          deviceId: identity.deviceId,
-          deviceName: identity.deviceName,
-        });
 
         setResponseDisplayOverrides((current) => ({
           ...current,
@@ -823,6 +798,7 @@ export default function ProtocolsScreen() {
           visible={reminderVisible}
           protocol={reminderProtocol}
           monitors={monitors}
+          properties={properties}
           onClose={closeReminder}
           onSave={handleReminderSave}
         />
@@ -895,7 +871,7 @@ export default function ProtocolsScreen() {
                       Resumen
                     </Text>
                     <Text className="mt-2 text-sm leading-6 text-[#334155]">
-                      {selectedExecution.responseNote ||
+                      {selectedExecutionWithOverride.responseNote ||
                         "Sin descripción registrada."}
                     </Text>
                   </View>

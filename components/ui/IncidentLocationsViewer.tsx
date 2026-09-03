@@ -63,8 +63,7 @@ function IncidentLocationsViewer({ property, locations }: Props) {
         latitudeDelta: 0.003,
         longitudeDelta: 0.003,
       });
-    } catch (e) {
-      console.log("❌ Error cargando property", e);
+    } catch {
     }
   }
 

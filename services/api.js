@@ -109,8 +109,6 @@ export const ApiService = {
       });
 
     try {
-      console.log("[createReport] Iniciando envío de reporte...");
-
       const reportPayload = {
         property: data.property,
         contributedBy: data.contributedBy,
@@ -135,7 +133,6 @@ export const ApiService = {
       };
 
       const endpoint = `${API_URL}/pending-reports/json`;
-      console.log("Enviando a:", endpoint);
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -146,9 +143,7 @@ export const ApiService = {
         body: JSON.stringify(reportPayload),
       });
 
-      console.log(" Respuesta recibida con código:", response.status);
       const textResponse = await response.text();
-      console.log(" Respuesta completa (texto):", textResponse);
 
       let result;
       try {
@@ -163,8 +158,6 @@ export const ApiService = {
           `Error HTTP ${response.status}: ${JSON.stringify(result)}`,
         );
       }
-
-      console.log("Reporte creado correctamente:", result);
 
       const reportId = result?.reportId;
       const failedEvidenceCount =
@@ -187,10 +180,6 @@ export const ApiService = {
   },
   addPendingEvidences: async (reportId, evidences, userId) => {
     try {
-      console.log(
-        `📤 Enviando ${evidences.length} evidencias al PendingReport ID: ${reportId}`,
-      );
-
       const formData = new FormData();
 
       evidences.forEach((file, index) => {
@@ -214,7 +203,6 @@ export const ApiService = {
       );
 
       const text = await response.text();
-      console.log("🧾 Respuesta:", text);
 
       let result;
       try {
@@ -229,7 +217,6 @@ export const ApiService = {
         );
       }
 
-      console.log("Evidencias añadidas correctamente:", result);
       return result;
     } catch (error) {
       console.error("Error al añadir evidencias:", error);
@@ -270,9 +257,6 @@ export const ApiService = {
   },
   updateReport: async (id, data, userId) => {
     try {
-      console.log(`✏️ Actualizando reporte ID: ${id}`);
-      console.log("📦 Payload:", data);
-
       const response = await fetch(`${API_URL}/pending-reports/${id}`, {
         method: "PUT",
         headers: {
@@ -306,7 +290,6 @@ export const ApiService = {
         throw new Error(result?.error || "Error al actualizar reporte");
       }
 
-      console.log(" Reporte actualizado:", result);
       return result;
     } catch (error) {
       console.error(" Error en updateReport:", error.message);
@@ -329,8 +312,6 @@ export const ApiService = {
 
   deleteReport: async (id, userId) => {
     try {
-      console.log(` Eliminando reporte ID: ${id}`);
-
       const response = await fetch(`${API_URL}/pending-reports/${id}`, {
         method: "DELETE",
         headers: {
@@ -344,7 +325,6 @@ export const ApiService = {
         throw new Error(result?.error || "Error al eliminar reporte");
       }
 
-      console.log(" Reporte eliminado correctamente");
       return { success: true };
     } catch (error) {
       console.error(" Error en deleteReport:", error.message);
@@ -353,10 +333,6 @@ export const ApiService = {
   },
   deletePendingEvidence: async (reportId, evidence, userId) => {
     try {
-      console.log(
-        ` Eliminando evidencia del reporte pendiente ID: ${reportId}`,
-      );
-
       const response = await fetch(
         `${API_URL}/pending-reports/${reportId}/eliminar-evidencia`,
         {
@@ -376,7 +352,6 @@ export const ApiService = {
       }
 
       const updatedReport = await response.json();
-      console.log(" Evidencia eliminada correctamente.");
       return updatedReport; // Devuelve el PendingReport actualizado
     } catch (error) {
       console.error(" Error en deletePendingEvidence:", error.message);
